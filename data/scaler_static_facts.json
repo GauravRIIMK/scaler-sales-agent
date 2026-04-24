@@ -1,0 +1,362 @@
+[
+  {
+    "id": "fee-academy-2026",
+    "topic": "fees",
+    "program": "Scaler Academy (all programs)",
+    "text": "All Scaler Academy programs (Modern Software & AI Engineering, Data Science & ML, DevOps & AI Platform Engineering, Advanced AIML) share the same advertised fee: total INR 3,99,000 with a 20,000 upfront commitment and EMI starting at INR 9,791/month. No-cost EMI is available with flexible monthly payments. Source: scaler.com program pages as of April 2026.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Fees & Schedule",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "fee-emi-structure-2026",
+    "topic": "fees",
+    "program": "Scaler Academy (all programs)",
+    "text": "EMI options for Scaler Academy: starting at INR 9,791/month with a one-time INR 20,000 upfront commitment. No-cost EMI (0% interest) is available through partner NBFCs. The total program cost is INR 3,99,000. Full day access begins from Day 1 of the program regardless of payment plan. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Fees & Schedule > EMI",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "duration-all-programs-2026",
+    "topic": "duration",
+    "program": "Scaler Academy (all programs)",
+    "text": "All four Scaler Academy programs (Modern Software & AI Engineering, Data Science & ML with AI Specialization, DevOps Cloud & AI Platform Engineering, Advanced AIML with Agentic AI) are 12 months in duration. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Programs > Duration",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "ratings-academy-sde-2026",
+    "topic": "reviews",
+    "program": "Scaler Academy - Modern Software & AI Engineering",
+    "text": "Scaler Academy Modern Software & AI Engineering program has a 4.8+ rating based on 25,000+ ratings. Source: scaler.com homepage program card.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Programs > Modern Software & AI Engineering > Ratings",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "ratings-academy-dsml-2026",
+    "topic": "reviews",
+    "program": "Scaler Academy - Data Science & ML",
+    "text": "Scaler Academy Data Science & ML with Specialisation in AI program has a 4.7+ rating based on 15,000+ ratings. Source: scaler.com homepage program card.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Programs > Data Science ML > Ratings",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "ratings-academy-devops-2026",
+    "topic": "reviews",
+    "program": "Scaler Academy - DevOps",
+    "text": "Scaler Academy DevOps, Cloud & AI Platform Engineering program has a 4.7+ rating based on 8,000+ ratings. Source: scaler.com homepage program card.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Programs > DevOps Cloud AI > Ratings",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "ratings-academy-aiml-2026",
+    "topic": "reviews",
+    "program": "Scaler Academy - Advanced AIML",
+    "text": "Scaler Academy Advanced AIML with Agentic AI specialisation program has a 4.6+ rating based on 4,000+ ratings. Source: scaler.com homepage program card.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Programs > Advanced AIML > Ratings",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "alumni-community-size-2026",
+    "topic": "alumni",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler has 1,00,000+ (100,000+) alumni in its tech community as of 2026, with 37,000+ active tech professionals in the community network. Source: scaler.com program pages community section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Community",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "mentor-model-2026",
+    "topic": "mentors",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler mentors are active industry professionals currently employed and hiring, not retired academics. They provide 1:1 mentor support, review student work, unblock issues in real time, and bring industry judgment. Mentors include professionals from top companies. Source: scaler.com program pages mentorship section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > How Scaler Works > Mentor Support",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "instructor-anshuman-singh-2026",
+    "topic": "mentors",
+    "program": "Scaler Academy (all programs)",
+    "text": "Anshuman Singh is Co-Founder at Scaler. He is a two-time ACM ICPC World Finalist and built Facebook Messenger as a founding team member. He has 15+ years of experience and a 4.9 instructor rating. He teaches Problem Solving & System Design. Source: scaler.com program pages instructor section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Instructors > Anshuman Singh",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "instructor-naman-bhalla-2026",
+    "topic": "mentors",
+    "program": "Scaler Academy (all programs)",
+    "text": "Naman Bhalla is Co-Founder at Scaler AI Labs. He achieved Google Kickstart global rank 135 and ACM ICPC rank 37. He built Scaler Topics from scratch. He has 6+ years of experience and a 4.8 instructor rating. He teaches DSA & Full Stack Development. Source: scaler.com program pages instructor section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Instructors > Naman Bhalla",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "instructor-shivank-agarwal-2026",
+    "topic": "mentors",
+    "program": "Scaler Academy (all programs)",
+    "text": "Shivank Agarwal is Senior VP Engineering at Scaler (ex-Microsoft and Oracle, a decade at each). He has 14+ years of experience and a 4.7 instructor rating. He teaches System Design & Backend Architecture. Source: scaler.com program pages instructor section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Instructors > Shivank Agarwal",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "curriculum-sde-structure-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - Modern Software & AI Engineering",
+    "text": "The Modern Software & AI Engineering curriculum includes: Core Programming Fundamentals (2 months, 27 sessions, no prior coding needed), Core Intermediate DSA: AI-Assisted Problem Solving (1 month, 12 sessions), Core AI & Agents: From Talking to AI to Building One (1 month, 11 sessions), Core Advanced DSA Foundations (4 months, 59 sessions), Core Advanced DSA DP Heaps & Graphs (4 months, 18 sessions). Total program is 12 months. Source: scaler.com/academy/.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Curriculum > Module Structure",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "curriculum-dsml-structure-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - Data Science & ML",
+    "text": "The Data Science & ML curriculum includes: Core Advanced SQL & AI for Data Professionals (2 months, 25 sessions), Core Excel & Dashboarding with AI Storytelling (1 month, 12 sessions), Core Python Foundations + AI Coding Assistants (1 month, 12 sessions), Core Data to Decisions: Product Analytics with AI (1 month, 12 sessions), Core Generative AI for Data Analytics & Automation (1 month, 12 sessions). Total program is 12 months. Source: scaler.com/data-science-course/.",
+    "source_url": "https://www.scaler.com/data-science-course/",
+    "section_path": "Data Science Course > Curriculum > Module Structure",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "curriculum-devops-structure-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - DevOps Cloud & AI Platform Engineering",
+    "text": "The DevOps curriculum includes: Linux Essentials (3 weeks, 7 sessions), Shell Scripting & Git for DevOps (4 weeks, 9 sessions), Docker Kubernetes & Observability (3 months, 32 sessions), CI/CD GitOps & Configuration Management (2 months, 24 sessions), AWS Cloud Foundations (1.5 months, 15 sessions). Total program is 12 months with specialisation in MLOps and Cybersecurity. Source: scaler.com/devops-course/.",
+    "source_url": "https://www.scaler.com/devops-course/",
+    "section_path": "DevOps Course > Curriculum > Module Structure",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "career-transition-rate-2024",
+    "topic": "placements",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler reports career transition statistics based on the 2024 Academy career transition assessment. The homepage displays placement metrics including median CTC post-Scaler, median hike in CTC for learners who completed the program, and median CTC for the top 25% of the assessed cohort. These are based on the assessed 2024 cohort. Source: scaler.com homepage placement section.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > Placement Stats > 2024 Cohort",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "alumni-placement-shivam-2026",
+    "topic": "placements",
+    "program": "Scaler Academy (all programs)",
+    "text": "Shivam Prakash transitioned from Backend Engineer at Ericsson to Computer Scientist at Adobe after Scaler. Sahil Bansal became a Data Scientist at Fractal. Rajesh Somasundaram moved from Software Engineer-II at HERE Technologies to Machine Learning Ops Engineer-2 at NinjaCart. These are published alumni outcomes on scaler.com. Source: scaler.com program pages alumni section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Alumni Stories",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "alumni-placement-examples-2-2026",
+    "topic": "placements",
+    "program": "Scaler Academy (all programs)",
+    "text": "Additional Scaler alumni outcomes: Divyanshu Tanter moved from Data Scientist at Wipro to AI Researcher and Developer at Dassault Systems (4 offers received). Sayyam Bhandari moved from Sr BI Analyst at USEReady INC to Data Engineer at Amazon (2 offers received). Madhuri Kukreja moved from Associate Analyst at XL Dynamics to Associate Analyst at Razorpay. Source: scaler.com program pages alumni section.",
+    "source_url": "https://www.scaler.com/data-science-course/",
+    "section_path": "Data Science Course > Alumni Stories",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "hiring-companies-2026",
+    "topic": "placements",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler alumni have joined companies including Adobe, Amazon, Fractal, NinjaCart, Dassault Systems, GoKwik, Razorpay, Landmark Group, and Uber per published alumni stories on scaler.com. Source: scaler.com program pages alumni section.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > Alumni Hiring Companies",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "lifelong-access-policy-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler provides lifelong access to curriculum after program completion: live sessions, regular curriculum updates, and lifetime access to recorded content at no extra cost. The access does not expire when the program ends. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > How Scaler Works > Lifelong Learning",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "schedule-working-professionals-2026",
+    "topic": "schedule",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler programs are designed for working professionals with jobs, ambition, and limited time. The programs provide structured live sessions alongside recorded content. Full day access begins from Day 1. Career support is included (resume review, mock interviews, placement assistance). Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > How Scaler Works > Schedule",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "ai-mock-interviews-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler includes AI Mock Interviews for all programs: AI avatars trained on real SWE interview formats covering DSA, LLD (Low-Level Design), and System Design. DevOps program offers AI mock interviews for Platform Engineer, SRE, and Cloud Architect roles. Built in-house at Scaler, designed to match actual technical hiring formats. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > AI Platform > Mock Interviews",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "sde-target-audience-2026",
+    "topic": "eligibility",
+    "program": "Scaler Academy - Modern Software & AI Engineering",
+    "text": "The Modern Software & AI Engineering program targets: (1) 1-4 Years SDEs, QA Engineers & Frontend Developers who want AI-aware engineering skills, (2) 2-6 Years Fullstack Developers, Backend & API Engineers, (3) 3-8 Years Software Engineers, Senior Engineers & Tech Leads, (4) 5-10+ Years Solution Engineers & AI-First Product Builders. Beginners (no prior coding) can start the 12-month beginner track. Source: scaler.com/academy/.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Who It Is For > Experience Levels",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "devops-target-audience-2026",
+    "topic": "eligibility",
+    "program": "Scaler Academy - DevOps Cloud & AI Platform Engineering",
+    "text": "The DevOps program targets: (1) Beginners wanting to skip the Junior SysAdmin phase (no prior coding required for the 12-month beginner track), (2) 3-7 Years Software Engineers & DevOps Engineers, (3) 7-12 Years SREs, Security Engineers & Data Engineers, (4) 12+ Years Cloud Architects & Engineering Leaders. Source: scaler.com/devops-course/.",
+    "source_url": "https://www.scaler.com/devops-course/",
+    "section_path": "DevOps Course > Who It Is For > Experience Levels",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "certificate-2026",
+    "topic": "certificate",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler issues a certificate upon program completion. The certificate is from Scaler (rebranded from InterviewBit Academy) and can be added to resume and LinkedIn. Scaler has an MoU with IIT Roorkee to launch Advanced AI-Focused Programs and an MoU with IIM Tiruchirappalli to co-develop Management Programmes. Source: scaler.com program pages certificate section.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Certificate",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "partnerships-iit-iim-2026",
+    "topic": "credibility",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler has signed MoUs with IIT Roorkee (to launch Advanced AI-Focused Programs to Bridge Industry Skill Gaps, March 2026) and IIM Tiruchirappalli (to co-develop Industry-Ready Management Programmes for an AI-Driven World, January 2026). Google for Startups collaborated with Scaler to equip Indian founders with AI skills through the 'Prompt to Prototype' program (November 2025). Source: scaler.com news section.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > News > Partnerships",
+    "effective_date": "2026-03-19"
+  },
+  {
+    "id": "company-background-2026",
+    "topic": "credibility",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler (previously InterviewBit Academy) is operated by Interviewbit Software Services Private Limited (also known as Interviewbit Technologies Pvt. Ltd.), headquartered at 5th Floor, Surya Park II, 14, 3rd cross, Parappana Agrahar Electronic City Rd, Electronics City Phase 1, Bengaluru, Karnataka 560100. Contact phone: 08045579575 and 08047939623. Founded in the EdTech space, shaping careers since 2019. Source: scaler.com footer.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > Footer > Company Info",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "career-support-2026",
+    "topic": "placements",
+    "program": "Scaler Academy (all programs)",
+    "text": "Career support included in all Scaler programs: resume review, mock interviews, and placement assistance. The 37,000+ alumni community provides professional networking. Structured check-ins and career support continue after program completion. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Career Support",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "ai-curriculum-integration-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler has rebuilt its curriculum with AI integrated in every module (not retrofitted or bolted on). Key features: AI Pair Programming in every lab, 24x7 AI Companion that hints, critiques, and pair-programs, AI Mock Interviews, AI-Driven Project Portfolio where every project ships with an AI layer, AI-Led Curriculum with Prompt-Review-Own workflow. Curriculum is updated quarterly. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > AI Curriculum > Integration",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "dsml-specialisation-roles-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - Data Science & ML",
+    "text": "The Data Science & ML program with AI Specialisation prepares students for roles including: Applied AI Data Scientist, ML Systems Engineer, AI Platform & LLMOps Engineer, Multimodal AI Engineer, AI-Augmented Decision Scientist, Growth Scientist, Insights Analyst. The market stat cited: 11M data science & analytics job openings projected in India alone by 2026 (NASSCOM/Taggd Research). Source: scaler.com/data-science-course/.",
+    "source_url": "https://www.scaler.com/data-science-course/",
+    "section_path": "Data Science Course > Career Outcomes > Target Roles",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "devops-specialisation-roles-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - DevOps Cloud & AI Platform Engineering",
+    "text": "The DevOps program with specialisation in MLOps and Cybersecurity prepares students for roles: AIOps Systems Architect, AI Gateway Engineer, Agentic Workflow Designer, RAG and Knowledge Engineer, AI-Enabled Platform Engineer, AI-Enabled SRE. Market stat cited: 9.8x growth in MLOps roles over five years (LinkedIn Emerging Jobs Report, 2025). Source: scaler.com/devops-course/.",
+    "source_url": "https://www.scaler.com/devops-course/",
+    "section_path": "DevOps Course > Career Outcomes > Target Roles",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "aiml-specialisation-roles-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - Advanced AIML",
+    "text": "The Advanced AIML with Agentic AI specialisation program prepares students for roles: AI Engineer, Agent Engineer, ML Systems Engineer, AI Platform & LLMOps Engineer, MLOps Engineer, Multimodal AI Engineer, Lead AI Architect. Market stat cited: 1.3M new AI-specific jobs globally in just two years (LinkedIn/WEF, Jan 2026). Source: scaler.com/ai-machine-learning-course/.",
+    "source_url": "https://www.scaler.com/ai-machine-learning-course/",
+    "section_path": "AIML Course > Career Outcomes > Target Roles",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "sde-specialisation-roles-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy - Modern Software & AI Engineering",
+    "text": "The Modern Software & AI Engineering program prepares students for roles: AI Backend Engineer, AI Frontend Engineer, AI Fullstack Engineer, Forward Deployed Engineers who embed with customers to build AI solutions. Market stat cited: 163% growth in AI-related job postings between 2024 and 2025 (LinkedIn, 365 Data Science, 2025) and $206K average AI engineer salary in 2025 (MRJ Recruitment, 2026). Source: scaler.com/academy/.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Career Outcomes > Target Roles",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "instructor-saurabh-kango-dsml-2026",
+    "topic": "mentors",
+    "program": "Scaler Academy - Data Science & ML",
+    "text": "Saurabh Kango is Senior Manager DS&A at a top company (ex-LinkedIn Analytics Lead and ex-Airbnb Data Scientist). He has guided 100+ students in analytics and BI, with 10+ years of experience and a 4.8 instructor rating. He teaches Data Analytics, SQL & Business Intelligence at Scaler. Source: scaler.com/data-science-course/ instructor section.",
+    "source_url": "https://www.scaler.com/data-science-course/",
+    "section_path": "Data Science Course > Instructors > Saurabh Kango",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "instructor-thanish-batcha-dsml-2026",
+    "topic": "mentors",
+    "program": "Scaler Academy - Data Science & ML",
+    "text": "Thanish Batcha is Senior Data Scientist II (ex-Amazon, built end-to-end ML at Amazon using BERT and RoBERTa, top finisher at MachineHack hackathons). He has 8+ years of experience and a 4.7 instructor rating. He teaches Machine Learning & Deep Learning at Scaler. Source: scaler.com/data-science-course/ instructor section.",
+    "source_url": "https://www.scaler.com/data-science-course/",
+    "section_path": "Data Science Course > Instructors > Thanish Batcha",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "next-cohort-2026",
+    "topic": "schedule",
+    "program": "Scaler Academy - Modern Software & AI Engineering",
+    "text": "The next cohort for Scaler Academy Modern Software & AI Engineering starts May 2026 per the program page as of April 2026. Source: scaler.com/academy/.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > Enrollment > Next Cohort",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "programs-overview-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler Academy offers four core programs: (1) Modern Software & AI Engineering - 12 months for software engineers, (2) Data Science & ML with Specialisation in AI - 12 months for data professionals, (3) DevOps, Cloud & AI Platform Engineering with specialisation in MLOps and Cybersecurity - 12 months for DevOps/infra engineers, (4) Advanced AIML with Agentic AI - 12 months for AI/ML focused engineers. Additionally offers Masters programs, PGP in Business & AI, and IIT Roorkee certifications. Source: scaler.com homepage and program pages.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > Programs Overview",
+    "effective_date": "2026-04-01"
+  },
+  {
+    "id": "scaler-school-of-technology-news-2026",
+    "topic": "credibility",
+    "program": "Scaler School of Technology",
+    "text": "Scaler School of Technology has international recognition: a student became the only Indian to join the Apple Developer Academy, Bali (May 2025). Scaler Innovation and Gahan AI collaborated on autonomous navigation systems for the mining industry (May 2025). Source: scaler.com homepage news section.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > News > Scaler School of Technology",
+    "effective_date": "2025-05-02"
+  },
+  {
+    "id": "financial-performance-2026",
+    "topic": "credibility",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler reduced net loss from INR 139 Cr to INR 3 Cr in FY25, with positive EBITDA and a pivot toward AI-powered learning per a blog article on scaler.com (January 2026). This signals business stability. Source: scaler.com blog.",
+    "source_url": "https://www.scaler.com/academy/",
+    "section_path": "Academy > News > Financial",
+    "effective_date": "2026-01-22"
+  },
+  {
+    "id": "curriculum-built-by-engineers-2026",
+    "topic": "curriculum",
+    "program": "Scaler Academy (all programs)",
+    "text": "Scaler's curriculum is built by 100+ engineers from industry. It is AI-first and not retrofitted — rebuilt from scratch. Every module reflects how best engineering and data teams work today with AI-assisted workflows, current interview standards, and the roles companies are hiring for now. Curriculum is updated quarterly at no extra cost to enrolled students. Source: scaler.com program pages.",
+    "source_url": "https://www.scaler.com/",
+    "section_path": "Homepage > Why Scaler > Curriculum",
+    "effective_date": "2026-04-01"
+  }
+]

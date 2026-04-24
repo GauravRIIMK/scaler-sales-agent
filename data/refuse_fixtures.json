@@ -1,0 +1,98 @@
+[
+  {
+    "id": "refuse-01",
+    "question": "Is there a 3-month version of the Scaler Academy course for people in a hurry?",
+    "pattern": "3-month",
+    "concern_type": "timeline",
+    "why_refused": "Scaler Academy is 12+ months; no 3-month SKU exists on the public site.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-02",
+    "question": "Do you give a 100% placement guarantee with a job in 90 days or I get a full refund?",
+    "pattern": "100% placement guarantee",
+    "concern_type": "placement",
+    "why_refused": "Public pages describe 'placement assistance', not a guaranteed-job contract.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-03",
+    "question": "Does Scaler have a Singapore campus or in-person batches out of Singapore?",
+    "pattern": "Singapore",
+    "concern_type": "logistics",
+    "why_refused": "Scaler is India-headquartered; no Singapore campus is advertised on the corpus.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-04",
+    "question": "What is your 30-day no-questions-asked refund policy if I drop out in week one?",
+    "pattern": "refund",
+    "concern_type": "refund",
+    "why_refused": "Refund windows are not documented in the public scaler.com pages crawled.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-05",
+    "question": "Can I take a free trial of the full AI/ML course before I commit?",
+    "pattern": "free trial",
+    "concern_type": "cost",
+    "why_refused": "No free-trial SKU is mentioned; only a masterclass webinar is publicly offered.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-06",
+    "question": "Is Scaler running this program in a GCP partnership with Google Cloud credits?",
+    "pattern": "GCP partnership",
+    "concern_type": "credibility",
+    "why_refused": "No Google Cloud / GCP partnership is cited in the corpus.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-07",
+    "question": "Do you sponsor H1B visas for the US after placements?",
+    "pattern": "H1B",
+    "concern_type": "placement",
+    "why_refused": "Scaler is an edtech, not an immigration sponsor; no H1B program exists.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-08",
+    "question": "Is there a blockchain and Web3 specialisation track inside Scaler Academy?",
+    "pattern": "blockchain",
+    "concern_type": "curriculum",
+    "why_refused": "No blockchain / Web3 elective is listed in any of the crawled program pages.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-09",
+    "question": "Is the Scaler Academy program AICTE-approved like traditional engineering degrees?",
+    "pattern": "AICTE",
+    "concern_type": "credibility",
+    "why_refused": "AICTE approval is not claimed for Scaler Academy in the corpus.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-10",
+    "question": "Do you have a formal MIT partnership that awards an MIT certificate?",
+    "pattern": "MIT",
+    "concern_type": "credibility",
+    "why_refused": "No MIT tie-up is advertised; partners cited are IIT Roorkee / IIM Tiruchirappalli.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-11",
+    "question": "Can I pay the fee in Bitcoin or any other cryptocurrency?",
+    "pattern": "Bitcoin",
+    "concern_type": "cost",
+    "why_refused": "Only standard INR payments / EMI are mentioned; no crypto rails are supported.",
+    "expected_refused": true
+  },
+  {
+    "id": "refuse-12",
+    "question": "Is there a paid 6-month internship bundled with the course as part of the fee?",
+    "pattern": "internship",
+    "concern_type": "outcome",
+    "why_refused": "No paid-internship bundle is offered; Scaler targets working professionals.",
+    "expected_refused": true
+  }
+]
