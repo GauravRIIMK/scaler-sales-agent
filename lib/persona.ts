@@ -20,6 +20,7 @@
  */
 import { claudeMessage, extractToolUse } from "./anthropic";
 import { log } from "./log";
+import { sanitizeForPrompt, sanitizeProfile } from "./sanitize";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ExtractedQuestion } from "./extract";
 
@@ -218,10 +219,11 @@ function buildPrompt(profile: LeadProfile, questions: ExtractedQuestion[], trans
 
 /** Regex fallback — conservative, keyword-driven. Flagged degraded. */
 export function regexPersona(profile: LeadProfile, questions: ExtractedQuestion[], transcript: string): PersonaVector {
+  const safeTranscript = sanitizeForPrompt(transcript, { maxChars: 4000 });
   const hay = [
     JSON.stringify(profile).toLowerCase(),
     questions.map((q) => q.question_rewritten + " " + q.text_excerpt).join(" ").toLowerCase(),
-    transcript.toLowerCase(),
+    safeTranscript.toLowerCase(),
   ].join(" \n ");
 
   // career_stage
@@ -317,6 +319,7 @@ export interface InferPersonaArgs {
   transcript_excerpt?: string;
   caseId?: string;
   component?: string;
+  language?: string;
 }
 
 export async function inferPersona(args: InferPersonaArgs): Promise<PersonaVector> {
@@ -334,10 +337,13 @@ export async function inferPersona(args: InferPersonaArgs): Promise<PersonaVecto
   });
 
   try {
+    const safeProfile = sanitizeProfile(args.profile as Record<string, unknown>) as LeadProfile;
+    const safeTranscript = sanitizeForPrompt(transcript, { maxChars: 4000 });
+    const langHint = args.language ? `\nLanguage hint: ${args.language}` : "";
     const msg = await claudeMessage({
       tier: "haiku",
       system: SYSTEM,
-      messages: [{ role: "user", content: buildPrompt(args.profile, args.questions, transcript) }],
+      messages: [{ role: "user", content: buildPrompt(safeProfile, args.questions, safeTranscript) + langHint }],
       tools: [personaTool()],
       toolChoice: { type: "tool", name: "record_persona" },
       temperature: 0,

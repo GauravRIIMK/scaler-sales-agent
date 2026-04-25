@@ -88,8 +88,51 @@ function PersonaChip({ label, value, conf }: { label: string; value: string; con
 }
 
 function StepBanner({ state }: { state: string }) {
-  const approved = state === "approved" || state === "edited" || state === "delivered";
-  const delivered = state === "delivered";
+  // Special-case states that suppress the step list entirely
+  if (state === "failed") {
+    return (
+      <section className="mb-6 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3">
+        <p className="text-sm font-medium text-rose-800">
+          Generation failed — see console for details
+        </p>
+      </section>
+    );
+  }
+
+  if (state === "skipped") {
+    return (
+      <section className="mb-6 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3">
+        <p className="text-sm font-medium text-slate-700">
+          BDA skipped this case — nothing was sent
+        </p>
+      </section>
+    );
+  }
+
+  // Determine step states
+  // step1 = Review PDF (active while still preparing or awaiting; done once approved/edited/delivered)
+  // step2 = Approve (active once approved or edited but not yet delivered; done when delivered)
+  // step3 = Send (active once approved or edited but not yet delivered; done when delivered)
+
+  const PREPARING_STATES = new Set([
+    "received",
+    "transcribing",
+    "questions_extracted",
+    "persona_inferred",
+    "retrieved",
+    "generated",
+    "verified",
+    "awaiting_approval",
+  ]);
+
+  const step1Done = state === "approved" || state === "edited" || state === "delivered";
+  const step1Active = !step1Done && PREPARING_STATES.has(state);
+
+  const step2Done = state === "delivered";
+  const step2Active = (state === "approved" || state === "edited") && !step2Done;
+
+  const step3Done = state === "delivered";
+  const step3Active = (state === "approved" || state === "edited") && !step3Done;
 
   function circle(n: number, active: boolean, done: boolean) {
     const base = "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shrink-0";
@@ -115,13 +158,6 @@ function StepBanner({ state }: { state: string }) {
   }
 
   const arrow = <span className="text-slate-300 text-sm font-light mx-1 shrink-0">{"→"}</span>;
-
-  const step1Active = !approved && !delivered;
-  const step1Done = approved || delivered;
-  const step2Active = approved && !delivered;
-  const step2Done = delivered;
-  const step3Active = approved && !delivered;
-  const step3Done = delivered;
 
   return (
     <section className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">

@@ -40,6 +40,11 @@ export async function claudeMessage(args: {
   const model = MODELS[args.tier];
   const started = Date.now();
 
+  // Opus 4.7 uses extended thinking and rejects caller-supplied temperature
+  // with HTTP 400 "temperature is deprecated for this model". Omit it for opus
+  // and pass it for haiku/sonnet only.
+  const isOpus = args.tier === "opus";
+
   const response = await withRetry(
     () =>
       anthropic().messages.create({
@@ -47,7 +52,7 @@ export async function claudeMessage(args: {
         system: args.system,
         messages: args.messages,
         max_tokens: args.maxTokens ?? 2048,
-        temperature: args.temperature ?? 0,
+        ...(isOpus ? {} : { temperature: args.temperature ?? 0 }),
         tools: args.tools,
         tool_choice: args.toolChoice,
       }),

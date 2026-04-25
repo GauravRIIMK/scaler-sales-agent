@@ -41,7 +41,10 @@ function paramsFromForm(form: FormData): Record<string, string> {
 export async function POST(req: Request) {
   const component = "twilio_status";
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const skipValidation = process.env.TWILIO_SKIP_VALIDATION === "true";
+  // only honored outside production — webhook signature verification is mandatory in prod
+  const skipValidation =
+    process.env.TWILIO_SKIP_VALIDATION === "true" &&
+    process.env.NODE_ENV !== "production";
 
   let form: FormData;
   try {

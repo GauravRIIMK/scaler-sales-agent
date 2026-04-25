@@ -38,7 +38,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const { data: row, error } = await supabase
     .from("lead_cases")
-    .select("id, lead_profile, extracted_questions, persona_vector")
+    .select("id, lead_profile, extracted_questions, persona_vector, language")
     .eq("id", caseId)
     .single();
   if (error || !row) {
@@ -109,6 +109,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       topChunks,
       caseId,
       component,
+      language: (row.language as string | null) ?? undefined,
     });
   } catch (e) {
     await log({

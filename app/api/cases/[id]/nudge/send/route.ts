@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { log } from "@/lib/log";
 import { isTwilioConfigured, sendWhatsAppText } from "@/lib/twilio";
+import { requireBdaCode } from "@/lib/bdaAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +55,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const caseId = params.id;
   const component = "nudge_send";
   if (!caseId) return NextResponse.json({ error: "missing case id" }, { status: 400 });
+
+  const authErr = requireBdaCode(req, caseId);
+  if (authErr) return authErr;
+
   if (!isTwilioConfigured()) {
     return NextResponse.json(
       { error: "Twilio not configured — set TWILIO_ACCOUNT_SID / AUTH_TOKEN / WHATSAPP_FROM" },

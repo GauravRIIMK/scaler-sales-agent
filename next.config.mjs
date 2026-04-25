@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    instrumentationHook: true,
     serverComponentsExternalPackages: ["@react-pdf/renderer"],
     serverActions: {
       bodySizeLimit: "25mb",

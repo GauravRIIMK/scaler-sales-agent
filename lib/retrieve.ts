@@ -54,6 +54,8 @@ export interface RetrieveOptions {
   caseId?: string;
   taskId?: string;
   component?: string;
+  /** BCP-47 language hint. When set to a non-English code (e.g. 'hi'), retrieval routes to dense-only RPC because the BM25 tsquery is hardcoded to English. */
+  language?: string;
 }
 
 interface HybridRow {
@@ -93,28 +95,62 @@ export async function retrieveGrounding(
     component,
   });
 
-  // 2. Hybrid RPC.
+  // 2. Hybrid RPC — or dense-only for Hindi (BM25 tsquery is hardcoded to English).
   const supabase = supabaseServer();
-  const { data, error } = await supabase.rpc("retrieve_hybrid", {
-    query_text: trimmed,
-    query_embedding: qvec as unknown as string, // pgvector accepts number[] serialised as JSON
-    match_k: matchK,
-    rrf_k: 60,
-    bm25_pool: opts.bm25Pool ?? 80,
-    dense_pool: opts.densePool ?? 80,
-  });
-  if (error) {
-    await log({
-      case_id: opts.caseId,
-      task_id: taskId,
-      component,
-      level: "ERROR",
-      event: "retrieve_hybrid_failed",
-      error_message: error.message,
+  const isHindi = (opts.language ?? "").toLowerCase().startsWith("hi");
+  const retrievalMode: "hybrid" | "dense_only_hi" = isHindi ? "dense_only_hi" : "hybrid";
+
+  let pool: HybridRow[];
+  if (isHindi) {
+    const { data: denseData, error: denseError } = await supabase.rpc("retrieve_dense_only", {
+      query_embedding: qvec as unknown as string,
+      match_k: matchK,
     });
-    throw new Error(`retrieve_hybrid RPC failed: ${error.message}`);
+    if (denseError) {
+      await log({
+        case_id: opts.caseId,
+        task_id: taskId,
+        component,
+        level: "ERROR",
+        event: "retrieve_dense_only_failed",
+        error_message: denseError.message,
+      });
+      throw new Error(`retrieve_dense_only RPC failed: ${denseError.message}`);
+    }
+    const denseRows = (denseData ?? []) as { id: string; url: string; section_path: string[]; text: string; score: number }[];
+    pool = denseRows.map((row, i) => ({
+      id: row.id,
+      url: row.url,
+      section_path: row.section_path,
+      text: row.text,
+      bm25_rank: null,
+      dense_rank: i + 1,
+      bm25_score: null,
+      dense_score: row.score,
+      rrf_score: row.score,
+    }));
+  } else {
+    const { data, error } = await supabase.rpc("retrieve_hybrid", {
+      query_text: trimmed,
+      query_embedding: qvec as unknown as string, // pgvector accepts number[] serialised as JSON
+      match_k: matchK,
+      rrf_k: 60,
+      bm25_pool: opts.bm25Pool ?? 80,
+      dense_pool: opts.densePool ?? 80,
+    });
+    if (error) {
+      await log({
+        case_id: opts.caseId,
+        task_id: taskId,
+        component,
+        level: "ERROR",
+        event: "retrieve_hybrid_failed",
+        error_message: error.message,
+      });
+      throw new Error(`retrieve_hybrid RPC failed: ${error.message}`);
+    }
+    pool = (data ?? []) as HybridRow[];
   }
-  const pool = (data ?? []) as HybridRow[];
   if (pool.length === 0) {
     await log({
       case_id: opts.caseId,
@@ -170,6 +206,7 @@ export async function retrieveGrounding(
       threshold,
       returned: hits.length,
       hit_urls: hits.map((h) => h.url),
+      retrieval_mode: retrievalMode,
     },
   });
 

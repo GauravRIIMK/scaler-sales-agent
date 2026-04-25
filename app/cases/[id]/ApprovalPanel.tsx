@@ -14,13 +14,12 @@
  * message verbatim — the BDA needs to know exactly why the send failed.
  *
  * Auth: every fetch carries x-bda-approval-code from the input at the top.
- * The code is pre-filled with the demo default and persisted to localStorage
- * so evaluators do not need to retype it between page loads.
+ * The code is persisted to localStorage so the BDA does not need to retype
+ * it between page loads, but no default is ever seeded.
  */
 import { useState, useEffect } from "react";
 
 const LS_CODE_KEY = "scaler_bda_code";
-const DEMO_DEFAULT_CODE = "SCALER-APPROVE-9421";
 
 interface Props {
   caseId: string;
@@ -61,18 +60,15 @@ export function ApprovalPanel({
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
 
-  // BDA approval code — seeded from localStorage, falls back to demo default.
+  // BDA approval code — hydrated from localStorage only if already present.
   const [bdaCode, setBdaCode] = useState<string>("");
 
   // Hydrate from localStorage on first render (after mount, client-only).
+  // Never seed a default — the code must come from the user.
   useEffect(() => {
     const stored = localStorage.getItem(LS_CODE_KEY);
     if (stored) {
       setBdaCode(stored);
-    } else {
-      // First time: pre-fill with demo default and persist it.
-      setBdaCode(DEMO_DEFAULT_CODE);
-      localStorage.setItem(LS_CODE_KEY, DEMO_DEFAULT_CODE);
     }
   }, []);
 
@@ -196,10 +192,12 @@ export function ApprovalPanel({
           value={coveringMsg}
           onChange={(e) => setCoveringMsg(e.target.value)}
           disabled={busy || terminal}
+          maxLength={320}
         />
         <p className="mt-1 text-xs text-slate-500">
           Edit before approving if you want a different opener to land on WhatsApp.
         </p>
+        <p className="mt-1 text-xs text-slate-400">{coveringMsg.length}/320</p>
       </div>
 
       <div className="mb-4">

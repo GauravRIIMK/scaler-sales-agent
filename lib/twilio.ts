@@ -17,6 +17,7 @@
 import twilio from "twilio";
 import { log } from "./log";
 import { isSupabaseConfigured, supabaseServer } from "./supabase";
+import { withRetry } from "./fallback";
 
 let _client: twilio.Twilio | null = null;
 
@@ -146,9 +147,79 @@ async function send({ to, body, mediaUrl, opts = {} }: SendArgs): Promise<SendRe
 
   let msg;
   try {
-    msg = await client.messages.create(payload);
+    // Fix 2: wrap with withRetry so transient 5xx/timeout errors from Twilio
+    // are retried up to 3 times with exponential back-off before propagating.
+    msg = await withRetry(
+      () => client.messages.create(payload),
+      {
+        ctx: { caseId: opts.caseId, taskId: "4.1-send", component },
+        providerName: "twilio",
+        attempts: 3,
+      }
+    );
   } catch (e) {
     const err = e as { code?: string | number; message?: string };
+    const errCode = err.code != null ? String(err.code) : undefined;
+
+    // Fix 3: surface actionable messages for known Twilio sandbox error codes.
+    if (errCode === "63016") {
+      // Log the original code so it remains queryable.
+      await log({
+        case_id: opts.caseId,
+        task_id: "4.1-send",
+        component,
+        provider: "twilio",
+        level: "ERROR",
+        event: "whatsapp_sandbox_optin_missing",
+        error_code: errCode,
+        error_message: String(err.message ?? e).slice(0, 500),
+      });
+      const friendly = new Error(
+        `Twilio sandbox refuses to send: recipient ${toAddr} has not sent "join <sandbox-code>" to ${fromAddr} in the last 24 h. Have them text the join word once, then retry.`
+      );
+      (friendly as unknown as { code: string }).code = errCode;
+      await recordDelivery({
+        caseId: opts.caseId,
+        to: toAddr,
+        from: fromAddr,
+        sid: "",
+        status: "failed_to_enqueue",
+        errorCode: errCode,
+        errorMessage: friendly.message.slice(0, 500),
+        hasMedia: !!mediaUrl,
+      });
+      throw friendly;
+    }
+
+    if (errCode === "63007") {
+      // Log original code for queryability.
+      await log({
+        case_id: opts.caseId,
+        task_id: "4.1-send",
+        component,
+        provider: "twilio",
+        level: "ERROR",
+        event: "whatsapp_invalid_sender",
+        error_code: errCode,
+        error_message: String(err.message ?? e).slice(0, 500),
+      });
+      const friendly = new Error(
+        "TWILIO_WHATSAPP_FROM is not a configured WhatsApp sender for this account. Check Twilio Console → WhatsApp senders."
+      );
+      (friendly as unknown as { code: string }).code = errCode;
+      await recordDelivery({
+        caseId: opts.caseId,
+        to: toAddr,
+        from: fromAddr,
+        sid: "",
+        status: "failed_to_enqueue",
+        errorCode: errCode,
+        errorMessage: friendly.message.slice(0, 500),
+        hasMedia: !!mediaUrl,
+      });
+      throw friendly;
+    }
+
     await log({
       case_id: opts.caseId,
       task_id: "4.1-send",
@@ -156,7 +227,7 @@ async function send({ to, body, mediaUrl, opts = {} }: SendArgs): Promise<SendRe
       provider: "twilio",
       level: "ERROR",
       event: "whatsapp_send_failed",
-      error_code: err.code != null ? String(err.code) : undefined,
+      error_code: errCode,
       error_message: String(err.message ?? e).slice(0, 500),
     });
     await recordDelivery({
@@ -165,7 +236,7 @@ async function send({ to, body, mediaUrl, opts = {} }: SendArgs): Promise<SendRe
       from: fromAddr,
       sid: "",
       status: "failed_to_enqueue",
-      errorCode: err.code != null ? String(err.code) : null,
+      errorCode: errCode ?? null,
       errorMessage: String(err.message ?? e).slice(0, 500),
       hasMedia: !!mediaUrl,
     });

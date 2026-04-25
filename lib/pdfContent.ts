@@ -17,11 +17,33 @@
 import { claudeMessage, extractToolUse, MODELS, type ModelTier } from "./anthropic";
 import { log } from "./log";
 import { retrieveGrounding, renderRefusal, type GroundingHit } from "./retrieve";
+import { sanitizeForPrompt, sanitizeProfile } from "./sanitize";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ExtractedQuestion } from "./extract";
 import type { PersonaVector } from "./persona";
 
 const PDF_VERSION = "pdf-content-3.2-v1";
+
+// ---------------------------------------------------------------------------
+// Fix 6 — Rupee glyph sanitization.
+// @react-pdf/renderer's fontkit maps U+20B9 (₹) to U+00B9 (¹) when using
+// bundled Inter v20. Replace at string level before any content reaches the
+// PDF renderer so "₹3.5 lakhs" renders as "Rs 3.5 lakhs" rather than "¹3.5 lakhs".
+// ---------------------------------------------------------------------------
+function sanitizeRupee(s: string): string {
+  return s.replace(/\u20B9/g, "Rs ").replace(/₹/g, "Rs ");
+}
+
+function sanitizeSections(sections: PDFSection[]): PDFSection[] {
+  return sections.map((sec) => ({
+    ...sec,
+    name: sanitizeRupee(sec.name),
+    sentences: sec.sentences.map((sent) => ({
+      ...sent,
+      text: sanitizeRupee(sent.text),
+    })),
+  }));
+}
 
 export type Certainty = "fact" | "inferred" | "refused";
 
@@ -67,6 +89,7 @@ export interface PdfContentInput {
   retrievedChunksByQuestion?: Record<number, GroundingHit[]>;
   caseId?: string;
   component?: string;
+  language?: string;
 }
 
 function sectionTool(): Anthropic.Tool {
@@ -171,16 +194,20 @@ async function generateSection(
   }
 ): Promise<PDFSection> {
   const { input, question, questionIdx, chunks, refused } = args;
+  const safeProfile = sanitizeProfile(input.profile);
+  const safeQuestionRewritten = sanitizeForPrompt(question.question_rewritten, { maxChars: 1000 });
+  const safeTextExcerpt = sanitizeForPrompt(question.text_excerpt, { maxChars: 1000 });
+  const langLine = input.language ? `Respond in language: ${input.language}.` : "";
   const userPrompt = [
     "## Lead profile",
-    JSON.stringify(input.profile, null, 2),
+    JSON.stringify(safeProfile, null, 2),
     "",
     "## Persona",
     personaBullet(input.persona),
     "",
     `## Question to answer (Q${questionIdx + 1}, concern=${question.concern_type}, evidence_type=${question.evidence_type}, stated=${question.is_stated})`,
-    question.question_rewritten,
-    question.text_excerpt ? `Lead's own words: "${question.text_excerpt}"` : "",
+    safeQuestionRewritten,
+    safeTextExcerpt ? `Lead's own words: "${safeTextExcerpt}"` : "",
     "",
     "## Retrieved chunks",
     refused ? "(retrieval refused — no chunks met the similarity threshold)" : renderChunks(chunks),
@@ -188,6 +215,7 @@ async function generateSection(
     refused
       ? "Emit 1-2 sentences with certainty='refused'. State honestly that scaler.com did not contain a sourced answer, and that a Scaler BDA will follow up."
       : "Call record_pdf_section now. Remember: no chunk_indices ⇒ certainty must be 'refused' or 'inferred'.",
+    langLine,
   ]
     .filter(Boolean)
     .join("\n");
@@ -213,8 +241,10 @@ async function generateSection(
 
   if (!out || !Array.isArray(out.sentences) || out.sentences.length === 0) {
     // Produce a hard refusal rather than crash — verifier will pick it up.
+    const rawName = question.question_rewritten;
+    const clippedName = rawName.length > 140 ? rawName.slice(0, 137) + "..." : rawName;
     return {
-      name: question.question_rewritten.slice(0, 80),
+      name: clippedName,
       section_type: question.concern_type,
       sentences: [
         {
@@ -258,12 +288,14 @@ async function generateCoveringMessage(
   input: PdfContentInput,
   sections: PDFSection[]
 ): Promise<string> {
-  const firstName = (input.profile as { name?: string }).name?.split?.(" ")?.[0] ?? "there";
+  const rawFirstName = (input.profile as { name?: string }).name?.split?.(" ")?.[0] ?? "there";
+  const firstName = sanitizeForPrompt(rawFirstName, { maxChars: 100, collapseWhitespace: true });
   const questionSummary = input.questions
     .slice(0, 3)
-    .map((q) => `- ${q.question_rewritten}`)
+    .map((q) => `- ${sanitizeForPrompt(q.question_rewritten, { maxChars: 300 })}`)
     .join("\n");
   const sectionSummary = sections.map((s) => `• ${s.name} (${s.refused ? "refused" : "answered"})`).join("\n");
+  const langLine = input.language ? `Respond in language: ${input.language}.` : "";
 
   const msg = await claudeMessage({
     tier: "sonnet",
@@ -282,7 +314,10 @@ async function generateCoveringMessage(
           sectionSummary,
           "",
           "Write the one-line covering WhatsApp message now via record_covering_msg.",
-        ].join("\n"),
+          langLine,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       },
     ],
     tools: [coveringTool()],
@@ -401,8 +436,8 @@ export async function generatePDFContent(input: PdfContentInput): Promise<PDFCon
   });
 
   const content: PDFContent = {
-    sections,
-    covering_msg,
+    sections: sanitizeSections(sections),
+    covering_msg: sanitizeRupee(covering_msg),
     persona_tokens: {
       archetype_label: input.persona.archetype_label,
       career_stage: input.persona.career_stage,

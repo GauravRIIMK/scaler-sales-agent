@@ -12,6 +12,14 @@
  * Returns the cleaned PDFContent plus a stats object. Calling code updates
  * lead_cases.pdf_content with the verified version.
  *
+ * Stats note:
+ *   claims_dropped_count = sentences removed entirely (moat-1 structural drops,
+ *                          moat-2 "no" verdicts).
+ *   rewritten_count      = sentences replaced with an honest-uncertainty stub
+ *                          (moat-3 literal/banned-word misses; empty-section stubs).
+ *   These counters are mutually exclusive — a sentence is either dropped OR rewritten,
+ *   never both.
+ *
  * Fallback: if Haiku moat 2 throws, we skip moat 2 only, log DEGRADED, and
  * raise the downstream retrieve threshold (caller responsibility).
  */
@@ -22,6 +30,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { PDFContent, PDFSection, Sentence, Certainty } from "./pdfContent";
 
 const VERIFIER_VERSION = "verify-3.3-v1";
+
+const VERIFY_BATCH_SIZE = 8;
 
 const BANNED_WORDS = ["guarantee", "promise", "best", "top"] as const;
 
@@ -138,32 +148,61 @@ async function haikuBatchVerify(
   component: string
 ): Promise<Verdict[]> {
   if (items.length === 0) return [];
-  const user = [
-    "For each sentence, decide whether the cited chunks SUPPORT the claim. Output one verdict per sentence, in input order.",
-    "",
-    ...items.map(
-      (it) =>
-        `--- sentence ${it.idx} (certainty=${it.sentence.certainty}) ---\nSENTENCE: ${it.sentence.text}\n\nCITED CHUNKS:\n${it.citedBody || "(none)"}`
-    ),
-  ].join("\n\n");
 
-  const msg = await claudeMessage({
-    tier: "haiku",
-    system: `You are a strict grounding auditor. Output 'yes' only if the cited chunks state (not imply) the claim.
+  const allVerdicts: Verdict[] = [];
+
+  // Process items in chunks of VERIFY_BATCH_SIZE sequentially to keep latency
+  // transparent and avoid JSON-truncation on large sections.
+  for (let start = 0; start < items.length; start += VERIFY_BATCH_SIZE) {
+    const chunk = items.slice(start, start + VERIFY_BATCH_SIZE);
+
+    const user = [
+      "For each sentence, decide whether the cited chunks SUPPORT the claim. Output one verdict per sentence, in input order.",
+      "",
+      ...chunk.map(
+        (it) =>
+          `--- sentence ${it.idx} (certainty=${it.sentence.certainty}) ---\nSENTENCE: ${it.sentence.text}\n\nCITED CHUNKS:\n${it.citedBody || "(none)"}`
+      ),
+    ].join("\n\n");
+
+    const maxTokens = Math.min(Math.max(800, chunk.length * 180), 4096);
+
+    const msg = await claudeMessage({
+      tier: "haiku",
+      system: `You are a strict grounding auditor. Output 'yes' only if the cited chunks state (not imply) the claim.
 'partial' = the chunks state a weaker version. 'no' = chunks do not support the claim at all.
 Be conservative — when in doubt, say 'partial' or 'no'.`,
-    messages: [{ role: "user", content: user }],
-    tools: [verifierTool()],
-    toolChoice: { type: "tool", name: "record_verdicts" },
-    maxTokens: 1500,
-    temperature: 0,
-    caseId,
-    taskId: "3.3-verify",
-    component,
-    promptVersion: `${VERIFIER_VERSION}-moat2`,
-  });
-  const out = extractToolUse<{ verdicts: Verdict[] }>(msg, "record_verdicts");
-  return out?.verdicts ?? [];
+      messages: [{ role: "user", content: user }],
+      tools: [verifierTool()],
+      toolChoice: { type: "tool", name: "record_verdicts" },
+      maxTokens,
+      temperature: 0,
+      caseId,
+      taskId: "3.3-verify",
+      component,
+      promptVersion: `${VERIFIER_VERSION}-moat2`,
+    });
+    const out = extractToolUse<{ verdicts: Verdict[] }>(msg, "record_verdicts");
+    const chunkVerdicts = out?.verdicts ?? [];
+    allVerdicts.push(...chunkVerdicts);
+
+    // If the verifier returned fewer verdicts than sentences in this chunk,
+    // synthesise conservative "partial" verdicts for the missing items so they
+    // are flagged + downgraded to certainty="inferred" rather than silently
+    // passing as fact.
+    const returnedIdxs = new Set(chunkVerdicts.map((v) => v.idx));
+    for (const it of chunk) {
+      if (!returnedIdxs.has(it.idx)) {
+        allVerdicts.push({
+          idx: it.idx,
+          supported: "partial",
+          reason: "verifier output truncated — downgraded conservatively",
+        });
+      }
+    }
+  }
+
+  return allVerdicts;
 }
 
 export interface VerifyOpts {
@@ -222,7 +261,6 @@ export async function verifyPDFContent(
       const literals = surfaceLiterals(s.text);
       const literalMiss = literals.find((lit) => !verbatimInCited(lit, s, chunks));
       if (literalMiss && s.certainty !== "refused") {
-        dropped++;
         await log({
           case_id: opts.caseId,
           task_id: "3.3-verify",
@@ -244,7 +282,6 @@ export async function verifyPDFContent(
       const banned = s.text.match(BANNED_RE) ?? [];
       const bannedMiss = banned.find((w) => !verbatimInCited(w, s, chunks));
       if (bannedMiss && s.certainty !== "refused") {
-        dropped++;
         await log({
           case_id: opts.caseId,
           task_id: "3.3-verify",

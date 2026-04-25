@@ -76,6 +76,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
+  // Idempotency: if the BDA clicks the same action that is already recorded,
+  // return 200 without inserting a duplicate bda_edits row.
+  const IDEMPOTENT_STATES: Action[] = ["approved", "edited", "skipped"];
+  if (body.action === row.state && IDEMPOTENT_STATES.includes(row.state as Action)) {
+    return NextResponse.json({
+      case_id: caseId,
+      state: row.state,
+      idempotent: true,
+      covering_msg: (row.covering_msg as string | null) ?? null,
+      section_edits_count: 0,
+    });
+  }
+
   const before = (row.covering_msg as string | null) ?? null;
   const after =
     body.action === "skipped"

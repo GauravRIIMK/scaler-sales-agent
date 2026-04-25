@@ -19,6 +19,12 @@ interface ProfileFields {
   budget_range: string;
 }
 
+interface ExtractMeta {
+  confidence: string;
+  missing_fields: string[];
+  reasoning: string;
+}
+
 type CallSource = "transcript" | "audio";
 type Language = "en-IN" | "en-US" | "hi";
 
@@ -29,13 +35,9 @@ type Language = "en-IN" | "en-US" | "hi";
 const PIPELINE_STEPS = [
   "Creating case",
   "Transcribing",
-  "Extracting questions",
-  "Inferring persona",
-  "Retrieving grounding",
-  "Drafting PDF",
-  "Verifying",
+  "Generating PDF",
   "Rendering",
-  "Nudge drafted",
+  "Drafting BDA nudge",
   "Done",
 ] as const;
 
@@ -97,10 +99,11 @@ function profileToJson(fields: ProfileFields, jsonOverride: string): Record<stri
 function fieldLabel(
   label: string,
   required?: boolean,
-  hint?: string
+  hint?: string,
+  htmlFor?: string
 ): React.ReactElement {
   return (
-    <label className="mb-1 block text-sm font-medium text-slate-700">
+    <label htmlFor={htmlFor} className="mb-1 block text-sm font-medium text-slate-700">
       {label}
       {required && <span className="ml-0.5 text-rose-500">*</span>}
       {hint && <span className="ml-2 font-normal text-slate-400 text-xs">{hint}</span>}
@@ -127,6 +130,7 @@ function PhoneField({
   disabled,
   required,
   hint,
+  id,
 }: {
   label: string;
   value: string;
@@ -134,12 +138,14 @@ function PhoneField({
   disabled: boolean;
   required?: boolean;
   hint?: string;
+  id: string;
 }) {
   const warn = phoneWarning(value);
   return (
     <div>
-      {fieldLabel(label, required, hint)}
+      {fieldLabel(label, required, hint, id)}
       <input
+        id={id}
         type="tel"
         className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
           warn ? "border-amber-400 bg-amber-50" : "border-slate-300"
@@ -148,6 +154,7 @@ function PhoneField({
         onChange={(e) => onChange(e.target.value)}
         placeholder="+91XXXXXXXXXX"
         disabled={disabled}
+        aria-required={required ? "true" : undefined}
       />
       {warn && <p className="mt-1 text-xs text-amber-700">{warn}</p>}
     </div>
@@ -224,6 +231,14 @@ export function NewCaseForm() {
   const [profileFields, setProfileFields] = useState<ProfileFields>(EMPTY_PROFILE);
   const [profileJsonOverride, setProfileJsonOverride] = useState("");
 
+  // Lead context paragraph + extract state
+  const [paragraphText, setParagraphText] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractMeta, setExtractMeta] = useState<ExtractMeta | null>(null);
+  const [showManualFields, setShowManualFields] = useState(false);
+  const [extractDone, setExtractDone] = useState(false);
+
   // Call
   const [callSource, setCallSource] = useState<CallSource>("transcript");
   const [transcript, setTranscript] = useState("");
@@ -255,6 +270,74 @@ export function NewCaseForm() {
   }
 
   // ------------------------------------------------------------------
+  // Extract profile from paragraph
+  // ------------------------------------------------------------------
+
+  async function handleExtract() {
+    setExtractError(null);
+    setExtracting(true);
+    try {
+      const res = await fetch("/api/cases/extract-profile", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profile_text: paragraphText,
+          transcript: transcript.trim() || undefined,
+          language,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      // Populate structured fields from response
+      const extracted = json.profile ?? json;
+      setProfileFields({
+        name: typeof extracted.name === "string" ? extracted.name : "",
+        role: typeof extracted.role === "string" ? extracted.role : "",
+        company: typeof extracted.company === "string" ? extracted.company : "",
+        years_experience:
+          extracted.years_experience !== undefined
+            ? String(extracted.years_experience)
+            : "",
+        location: typeof extracted.location === "string" ? extracted.location : "",
+        education: typeof extracted.education === "string" ? extracted.education : "",
+        goals: Array.isArray(extracted.goals)
+          ? extracted.goals.join("\n")
+          : typeof extracted.goals === "string"
+          ? extracted.goals
+          : "",
+        concerns: Array.isArray(extracted.concerns)
+          ? extracted.concerns.join("\n")
+          : typeof extracted.concerns === "string"
+          ? extracted.concerns
+          : "",
+        budget_range:
+          typeof extracted.budget_range === "string" ? extracted.budget_range : "",
+      });
+      setExtractMeta({
+        confidence: typeof json.confidence === "string" ? json.confidence : "unknown",
+        missing_fields: Array.isArray(json.missing_fields) ? json.missing_fields : [],
+        reasoning: typeof json.reasoning === "string" ? json.reasoning : "",
+      });
+      setExtractDone(true);
+      setShowManualFields(true);
+    } catch (e) {
+      setExtractError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  function handleClearAndRepaste() {
+    setProfileFields(EMPTY_PROFILE);
+    setExtractMeta(null);
+    setExtractDone(false);
+    setShowManualFields(false);
+    setExtractError(null);
+  }
+
+  // ------------------------------------------------------------------
   // Validation
   // ------------------------------------------------------------------
 
@@ -269,7 +352,12 @@ export function NewCaseForm() {
         return "Advanced JSON is not valid JSON";
       }
     } else {
-      if (!profileFields.name.trim()) return "Lead name is required";
+      if (!profileFields.name.trim()) {
+        if (!extractDone && !showManualFields) {
+          return "You haven't extracted a profile yet. Click Extract first or reveal the manual fields.";
+        }
+        return "Lead name is required";
+      }
     }
 
     if (callSource === "transcript" && !transcript.trim()) {
@@ -351,14 +439,10 @@ export function NewCaseForm() {
         // Transcribing step fires only if audio was submitted
         if (useAudio) markStep("Transcribing");
 
-        markStep("Extracting questions");
         const genRes = await fetch(`/api/cases/${caseId}/generate`, { method: "POST" });
         const genJson = await genRes.json();
         if (!genRes.ok) throw new Error(genJson.error ?? `HTTP ${genRes.status}`);
-        markStep("Inferring persona");
-        markStep("Retrieving grounding");
-        markStep("Drafting PDF");
-        markStep("Verifying");
+        markStep("Generating PDF");
 
         const pdfRes = await fetch(`/api/cases/${caseId}/pdf`, { method: "POST" });
         const pdfJson = await pdfRes.json();
@@ -370,7 +454,7 @@ export function NewCaseForm() {
         const nudgeRes = await fetch(`/api/cases/${caseId}/nudge`, { method: "POST" });
         const nudgeJson = await nudgeRes.json();
         if (!nudgeRes.ok) throw new Error(nudgeJson.error ?? `HTTP ${nudgeRes.status}`);
-        markStep("Nudge drafted");
+        markStep("Drafting BDA nudge");
       }
 
       markStep("Done");
@@ -408,126 +492,365 @@ export function NewCaseForm() {
       <section className="space-y-4">
         <SectionHeading>1. Lead profile</SectionHeading>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Name */}
-          <div>
-            {fieldLabel("Lead name", true)}
-            <input
-              type="text"
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.name}
-              onChange={setField("name")}
-              placeholder="Priya Rao"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
+        {/* Lead context paragraph input */}
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            {fieldLabel("Lead context", true, undefined, "lead-context")}
+            {extractDone && (
+              <button
+                type="button"
+                onClick={handleClearAndRepaste}
+                disabled={busy}
+                className="shrink-0 text-xs text-slate-500 underline hover:text-slate-700 disabled:opacity-50"
+              >
+                Clear and re-paste
+              </button>
+            )}
           </div>
-
-          {/* Role */}
-          <div>
-            {fieldLabel("Role / current designation")}
-            <input
-              type="text"
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.role}
-              onChange={setField("role")}
-              placeholder="Senior Product Manager"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
-          </div>
-
-          {/* Company */}
-          <div>
-            {fieldLabel("Current company")}
-            <input
-              type="text"
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.company}
-              onChange={setField("company")}
-              placeholder="Flipkart"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
-          </div>
-
-          {/* Years experience */}
-          <div>
-            {fieldLabel("Years of experience")}
-            <input
-              type="number"
-              min={0}
-              max={50}
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.years_experience}
-              onChange={setField("years_experience")}
-              placeholder="6"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
-          </div>
-
-          {/* Location */}
-          <div>
-            {fieldLabel("Current location")}
-            <input
-              type="text"
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.location}
-              onChange={setField("location")}
-              placeholder="Bangalore"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
-          </div>
-
-          {/* Education */}
-          <div>
-            {fieldLabel("Education")}
-            <input
-              type="text"
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.education}
-              onChange={setField("education")}
-              placeholder="B.Tech, IIIT-Hyderabad"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
-          </div>
-
-          {/* Budget range */}
-          <div className="sm:col-span-2">
-            {fieldLabel("Budget range", false, "helps persona vector")}
-            <input
-              type="text"
-              className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={profileFields.budget_range}
-              onChange={setField("budget_range")}
-              placeholder="INR 3-5L"
-              disabled={busy || !!profileJsonOverride.trim()}
-            />
-          </div>
-        </div>
-
-        {/* Goals */}
-        <div>
-          {fieldLabel("Goals", false, "one per line")}
+          <p className="text-xs text-slate-500">
+            Paste any prose describing this lead — a LinkedIn bio, intake notes, a sales-call
+            summary, an enrolment form excerpt. We&apos;ll extract the structured profile
+            automatically. You can edit the result before submitting.
+          </p>
           <textarea
+            id="lead-context"
             className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-            rows={3}
-            value={profileFields.goals}
-            onChange={setField("goals")}
-            placeholder={"Move into AI product roles\nLearn to work with LLMs hands-on"}
-            disabled={busy || !!profileJsonOverride.trim()}
+            rows={8}
+            value={paragraphText}
+            onChange={(e) => setParagraphText(e.target.value)}
+            placeholder={
+              "e.g. Rohan is a 4-year SDE-2 at TCS who wants to break into AI engineering roles. He's done Andrew Ng's courses but feels he can't ship a RAG pipeline. The 3.5L price is a stretch on his 14 LPA salary..."
+            }
+            disabled={busy}
+            aria-required="true"
           />
+
+          {/* Extract button */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleExtract}
+              disabled={busy || extracting || paragraphText.trim().length < 20}
+              className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-600 disabled:opacity-40"
+            >
+              {extracting ? "Extracting\u2026" : "Extract profile"}
+            </button>
+            {paragraphText.trim().length > 0 && paragraphText.trim().length < 20 && (
+              <span className="text-xs text-slate-400">
+                Add {20 - paragraphText.trim().length} more character
+                {20 - paragraphText.trim().length === 1 ? "" : "s"} to enable
+              </span>
+            )}
+          </div>
+
+          {/* Extract error */}
+          {extractError && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="rounded border border-rose-300 bg-rose-50 p-2 text-xs text-rose-800"
+            >
+              {extractError}
+            </div>
+          )}
         </div>
 
-        {/* Concerns */}
-        <div>
-          {fieldLabel("Concerns stated on call", false, "one per line")}
-          <textarea
-            className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-            rows={3}
-            value={profileFields.concerns}
-            onChange={setField("concerns")}
-            placeholder={"Fee justification to spouse\nUncertain about time commitment"}
-            disabled={busy || !!profileJsonOverride.trim()}
-          />
-        </div>
+        {/* Extracted profile meta banner */}
+        {extractMeta && (
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs space-y-1">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span>
+                <span className="font-medium text-slate-600">Confidence:</span>{" "}
+                <span
+                  className={
+                    extractMeta.confidence === "high"
+                      ? "text-emerald-700"
+                      : extractMeta.confidence === "low"
+                      ? "text-amber-700"
+                      : "text-slate-600"
+                  }
+                >
+                  {extractMeta.confidence}
+                </span>
+              </span>
+              {extractMeta.missing_fields.length > 0 && (
+                <span>
+                  <span className="font-medium text-slate-600">Missing:</span>{" "}
+                  <span className="text-amber-700">
+                    [{extractMeta.missing_fields.join(", ")}]
+                  </span>
+                </span>
+              )}
+            </div>
+            {extractMeta.reasoning && (
+              <p className="text-slate-500 italic">{extractMeta.reasoning}</p>
+            )}
+          </div>
+        )}
+
+        {/* Structured fields — shown after extraction or if user reveals manually */}
+        {(showManualFields || extractDone) && (
+          <div className="rounded border border-slate-200 p-4 space-y-4">
+            <p className="text-xs font-medium text-slate-500">
+              {extractDone ? "Extracted profile (editable)" : "Manual profile fields"}
+            </p>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Name */}
+              <div>
+                {fieldLabel("Lead name", true, undefined, "lead-name")}
+                <input
+                  id="lead-name"
+                  type="text"
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("name") &&
+                    !profileFields.name.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.name}
+                  onChange={setField("name")}
+                  placeholder="Priya Rao"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                  aria-required="true"
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("name") &&
+                  !profileFields.name.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+
+              {/* Role */}
+              <div>
+                {fieldLabel("Role / current designation", undefined, undefined, "lead-role")}
+                <input
+                  id="lead-role"
+                  type="text"
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("role") &&
+                    !profileFields.role.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.role}
+                  onChange={setField("role")}
+                  placeholder="Senior Product Manager"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("role") &&
+                  !profileFields.role.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+
+              {/* Company */}
+              <div>
+                {fieldLabel("Current company", undefined, undefined, "lead-company")}
+                <input
+                  id="lead-company"
+                  type="text"
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("company") &&
+                    !profileFields.company.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.company}
+                  onChange={setField("company")}
+                  placeholder="Flipkart"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("company") &&
+                  !profileFields.company.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+
+              {/* Years experience */}
+              <div>
+                {fieldLabel(
+                  "Years of experience",
+                  undefined,
+                  undefined,
+                  "lead-years-experience"
+                )}
+                <input
+                  id="lead-years-experience"
+                  type="number"
+                  min={0}
+                  max={50}
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("years_experience") &&
+                    !profileFields.years_experience.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.years_experience}
+                  onChange={setField("years_experience")}
+                  placeholder="6"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("years_experience") &&
+                  !profileFields.years_experience.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+
+              {/* Location */}
+              <div>
+                {fieldLabel("Current location", undefined, undefined, "lead-location")}
+                <input
+                  id="lead-location"
+                  type="text"
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("location") &&
+                    !profileFields.location.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.location}
+                  onChange={setField("location")}
+                  placeholder="Bangalore"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("location") &&
+                  !profileFields.location.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+
+              {/* Education */}
+              <div>
+                {fieldLabel("Education", undefined, undefined, "lead-education")}
+                <input
+                  id="lead-education"
+                  type="text"
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("education") &&
+                    !profileFields.education.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.education}
+                  onChange={setField("education")}
+                  placeholder="B.Tech, IIIT-Hyderabad"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("education") &&
+                  !profileFields.education.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+
+              {/* Budget range */}
+              <div className="sm:col-span-2">
+                {fieldLabel(
+                  "Budget range",
+                  false,
+                  "helps persona vector",
+                  "lead-budget-range"
+                )}
+                <input
+                  id="lead-budget-range"
+                  type="text"
+                  className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                    extractDone &&
+                    extractMeta?.missing_fields.includes("budget_range") &&
+                    !profileFields.budget_range.trim()
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-300"
+                  }`}
+                  value={profileFields.budget_range}
+                  onChange={setField("budget_range")}
+                  placeholder="INR 3-5L"
+                  disabled={busy || !!profileJsonOverride.trim()}
+                />
+                {extractDone &&
+                  extractMeta?.missing_fields.includes("budget_range") &&
+                  !profileFields.budget_range.trim() && (
+                    <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                  )}
+              </div>
+            </div>
+
+            {/* Goals */}
+            <div>
+              {fieldLabel("Goals", false, "one per line", "lead-goals")}
+              <textarea
+                id="lead-goals"
+                className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                  extractDone &&
+                  extractMeta?.missing_fields.includes("goals") &&
+                  !profileFields.goals.trim()
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-slate-300"
+                }`}
+                rows={3}
+                value={profileFields.goals}
+                onChange={setField("goals")}
+                placeholder={"Move into AI product roles\nLearn to work with LLMs hands-on"}
+                disabled={busy || !!profileJsonOverride.trim()}
+              />
+              {extractDone &&
+                extractMeta?.missing_fields.includes("goals") &&
+                !profileFields.goals.trim() && (
+                  <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                )}
+            </div>
+
+            {/* Concerns */}
+            <div>
+              {fieldLabel("Concerns stated on call", false, "one per line", "lead-concerns")}
+              <textarea
+                id="lead-concerns"
+                className={`w-full rounded border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                  extractDone &&
+                  extractMeta?.missing_fields.includes("concerns") &&
+                  !profileFields.concerns.trim()
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-slate-300"
+                }`}
+                rows={3}
+                value={profileFields.concerns}
+                onChange={setField("concerns")}
+                placeholder={"Fee justification to spouse\nUncertain about time commitment"}
+                disabled={busy || !!profileJsonOverride.trim()}
+              />
+              {extractDone &&
+                extractMeta?.missing_fields.includes("concerns") &&
+                !profileFields.concerns.trim() && (
+                  <p className="mt-0.5 text-xs text-amber-600">inferred missing</p>
+                )}
+            </div>
+          </div>
+        )}
+
+        {/* Reveal manual fields fallback (shown before any extraction) */}
+        {!showManualFields && !extractDone && (
+          <p className="text-xs text-slate-400">
+            No profile yet?{" "}
+            <button
+              type="button"
+              onClick={() => setShowManualFields(true)}
+              className="underline hover:text-slate-600"
+            >
+              Reveal manual fields
+            </button>{" "}
+            to fill them directly.
+          </p>
+        )}
 
         {/* Advanced JSON override */}
         <details className="rounded border border-slate-200">
@@ -582,14 +905,16 @@ export function NewCaseForm() {
         {/* Transcript textarea */}
         {callSource === "transcript" && (
           <div>
-            {fieldLabel("Call transcript", true)}
+            {fieldLabel("Call transcript", true, undefined, "call-transcript")}
             <textarea
+              id="call-transcript"
               className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
               rows={9}
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}
               placeholder={TRANSCRIPT_PLACEHOLDER}
               disabled={busy}
+              aria-required="true"
             />
             <p className="mt-1 text-xs text-slate-500">
               LEAD: / BDA: speaker prefixes are recognised. Loose plaintext is treated as a single LEAD turn.
@@ -600,13 +925,15 @@ export function NewCaseForm() {
         {/* Audio upload */}
         {callSource === "audio" && (
           <div>
-            {fieldLabel("Audio file", true, "mp3 / wav, max 40 MB — transcribed via Deepgram")}
+            {fieldLabel("Audio file", true, "mp3 / wav, max 40 MB — transcribed via Deepgram", "call-audio")}
             <input
+              id="call-audio"
               type="file"
               accept="audio/*"
               className="block w-full rounded border border-slate-300 p-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200"
               onChange={(e) => setAudio(e.target.files?.[0] ?? null)}
               disabled={busy}
+              aria-required="true"
             />
             {audio && (
               <p className="mt-1 text-xs text-slate-500">
@@ -626,6 +953,7 @@ export function NewCaseForm() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* Lead WhatsApp */}
           <PhoneField
+            id="lead-whatsapp"
             label="Lead WhatsApp"
             value={leadPhone}
             onChange={setLeadPhone}
@@ -635,6 +963,7 @@ export function NewCaseForm() {
 
           {/* BDA WhatsApp */}
           <PhoneField
+            id="bda-whatsapp"
             label="BDA WhatsApp"
             value={bdaPhone}
             onChange={setBdaPhone}
@@ -644,8 +973,9 @@ export function NewCaseForm() {
 
           {/* BDA name */}
           <div>
-            {fieldLabel("BDA name", false, "shown on nudge message")}
+            {fieldLabel("BDA name", false, "shown on nudge message", "bda-name")}
             <input
+              id="bda-name"
               type="text"
               className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
               value={bdaName}
@@ -657,8 +987,9 @@ export function NewCaseForm() {
 
           {/* Language */}
           <div>
-            {fieldLabel("Language")}
+            {fieldLabel("Language", undefined, undefined, "call-language")}
             <select
+              id="call-language"
               className="w-full rounded border border-slate-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
               value={language}
               onChange={(e) => setLanguage(e.target.value as Language)}
@@ -738,7 +1069,11 @@ export function NewCaseForm() {
           Error
       ================================================================ */}
       {err && (
-        <div className="rounded border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="rounded border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800"
+        >
           {err}
         </div>
       )}

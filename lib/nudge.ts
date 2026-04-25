@@ -11,6 +11,7 @@
  */
 import { claudeMessage, extractToolUse } from "./anthropic";
 import { log } from "./log";
+import { sanitizeForPrompt, sanitizeProfile } from "./sanitize";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ExtractedQuestion } from "./extract";
 import type { PersonaVector } from "./persona";
@@ -93,6 +94,7 @@ export interface NudgeInput {
   topChunks: GroundingHit[];
   caseId?: string;
   component?: string;
+  language?: string;
 }
 
 export interface NudgeResult {
@@ -107,6 +109,7 @@ export interface NudgeResult {
 
 function buildUserPrompt(input: NudgeInput): string {
   const { profile, questions, persona, topChunks } = input;
+  const safeProfile = sanitizeProfile(profile as Record<string, unknown>);
   const signals = persona.signals.filter(Boolean).slice(0, 5).join(" | ");
   const axes = [
     `career_stage=${persona.career_stage}`,
@@ -116,20 +119,25 @@ function buildUserPrompt(input: NudgeInput): string {
     `risk_posture=${persona.risk_posture}`,
   ].join(", ");
   const qs = questions.length
-    ? questions.map((q, i) => `Q${i + 1} (${q.concern_type}): ${q.question_rewritten}`).join("\n")
+    ? questions
+        .map((q, i) => `Q${i + 1} (${q.concern_type}): ${sanitizeForPrompt(q.question_rewritten, { maxChars: 1200 })}`)
+        .join("\n")
     : "(no questions extracted — prefer implicit-objection angles)";
   const chunks = topChunks.length
     ? topChunks
         .map(
           (c, i) =>
-            `[${i + 1}] ${formatCitation(c)} (rerank=${c.rerank_score.toFixed(2)})\n${c.text.slice(0, 600)}`
+            `[${i + 1}] ${formatCitation(c)} (rerank=${c.rerank_score.toFixed(2)})\n${sanitizeForPrompt(c.text, { maxChars: 1200 }).slice(0, 600)}`
         )
         .join("\n\n")
     : "(no chunks passed through refuse threshold — flag in the 'Missing' section)";
+  const langLine = input.language
+    ? `Render the WhatsApp plaintext in language: ${input.language}. Use the matching greeting conventions.`
+    : "";
 
   return [
     "## Lead profile",
-    JSON.stringify(profile, null, 2),
+    JSON.stringify(safeProfile, null, 2),
     "",
     "## Persona",
     `archetype = ${persona.archetype_label}`,
@@ -143,6 +151,7 @@ function buildUserPrompt(input: NudgeInput): string {
     "## Top-ranked grounding chunks",
     chunks,
     "",
+    langLine,
     "Call record_nudge with both markdown and whatsapp_plaintext filled in.",
   ]
     .filter(Boolean)

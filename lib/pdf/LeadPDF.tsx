@@ -15,6 +15,7 @@
  * Rendered via `@react-pdf/renderer` -> renderToStream in the API route.
  */
 import React from "react";
+import path from "path";
 import {
   Document,
   Font,
@@ -32,28 +33,32 @@ import {
 } from "./personaConfigs";
 
 // ---------------------------------------------------------------------------
-// Font registration — Inter from Google Fonts CDN.
-// react-pdf fetches these once at render time (Node.js only).
-// Wrapped in try/catch: if the CDN is unreachable we fall back to Helvetica.
+// Font registration — Inter bundled locally (public/fonts/*.ttf).
+// Source: Google Fonts gstatic CDN, Inter v20, downloaded at build time.
+// Wrapped in try/catch: if files are missing we fall back to Helvetica.
+// The sentinel _interRegistered lets the render function know whether
+// registration actually succeeded.
 // ---------------------------------------------------------------------------
+let _interRegistered = false;
 try {
   Font.register({
     family: "Inter",
     fonts: [
       {
-        src: "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7.woff2",
+        src: path.join(process.cwd(), "public/fonts/Inter-Regular.ttf"),
         fontWeight: 400,
       },
       {
-        src: "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7W1Q.woff2",
+        src: path.join(process.cwd(), "public/fonts/Inter-SemiBold.ttf"),
         fontWeight: 600,
       },
       {
-        src: "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7SUc.woff2",
+        src: path.join(process.cwd(), "public/fonts/Inter-Bold.ttf"),
         fontWeight: 700,
       },
     ],
   });
+  _interRegistered = true;
 } catch {
   // Font registration is best-effort; react-pdf falls back to Helvetica.
 }
@@ -131,6 +136,7 @@ function buildStyles(cfg: PDFStyleConfig) {
       paddingTop: cfg.page_margin,
       paddingLeft: cfg.page_margin + 10,
       paddingRight: cfg.page_margin,
+      paddingBottom: 60,   // footer height (~20) + bottom offset (18) + 22 clearance (increased for refList-heavy pages)
     },
     sideRail: {
       position: "absolute",
@@ -177,12 +183,14 @@ function buildStyles(cfg: PDFStyleConfig) {
       fontSize: 28,
       fontWeight: 700,
       color: cfg.primary_color,
-      marginBottom: 4,
+      lineHeight: 1.1,
+      marginBottom: 8,
     },
     coverRoleCompany: {
       fontSize: 14,
       color: SLATE,
-      marginBottom: 10,
+      marginTop: 0,
+      marginBottom: 14,
     },
     archetypeChip: {
       alignSelf: "flex-start",
@@ -230,12 +238,14 @@ function buildStyles(cfg: PDFStyleConfig) {
       fontSize: 20,
       fontWeight: 700,
       color: cfg.accent,
-      marginBottom: 2,
+      lineHeight: 1.0,
+      marginBottom: 4,
     },
     trustLabel: {
       fontSize: 8,
       color: SLATE,
       textAlign: "center",
+      marginTop: 2,
     },
     coverFooterNote: {
       fontSize: cfg.font_size_meta,
@@ -322,7 +332,7 @@ function buildStyles(cfg: PDFStyleConfig) {
       fontStyle: "italic",
     },
     refList: {
-      marginTop: 6,
+      marginTop: 8,
       paddingTop: 5,
       borderTopWidth: 0.5,
       borderTopColor: "#CBD5E1",
@@ -354,8 +364,9 @@ function buildStyles(cfg: PDFStyleConfig) {
       backgroundColor: cfg.accent,
       marginHorizontal: -(cfg.page_margin + 10),
       paddingVertical: 20,
-      paddingHorizontal: cfg.page_margin + 10,
+      paddingHorizontal: cfg.page_margin + 20,   // +10 extra to clear the 10pt sideRail
       marginTop: sectionGap,
+      marginBottom: 10,    // keep clear of footer
     },
     ctaTitle: {
       fontSize: 11,
@@ -391,15 +402,10 @@ function SentenceLine({
   refNumbers: number[];
   styles: ReturnType<typeof buildStyles>;
 }) {
-  // Refused sentences get their own amber callout block, not an inline tag.
+  // Refused sentences are represented by a single section-level callout
+  // rendered in SectionBlock — skip individual rendering here.
   if (sentence.certainty === "refused") {
-    return (
-      <View style={styles.refusedCallout} wrap={false}>
-        <Text style={styles.refusedCalloutText}>
-          No confirmed source yet — your BDA will confirm on the next call.
-        </Text>
-      </View>
-    );
+    return null;
   }
 
   return (
@@ -434,6 +440,11 @@ function SectionBlock({
 }) {
   const chunkIds = Array.from(new Set(section.sentences.flatMap((s) => s.chunk_ids)));
   const idToNum = new Map(chunkIds.map((id, i) => [id, refIndexStart + i]));
+  const refusedCount = section.sentences.filter((s) => s.certainty === "refused").length;
+  const refusedCalloutText =
+    refusedCount === 1
+      ? "1 question without a confirmed source — your BDA will confirm on the next call."
+      : `${refusedCount} questions without a confirmed source — your BDA will confirm on the next call.`;
 
   return (
     <View style={styles.sectionBlock} wrap>
@@ -446,6 +457,11 @@ function SectionBlock({
         <Text style={styles.sectionHeading}>{section.name}</Text>
       </View>
       <View style={styles.sectionDivider} />
+      {refusedCount > 0 ? (
+        <View style={styles.refusedCallout} wrap={false}>
+          <Text style={styles.refusedCalloutText}>{refusedCalloutText}</Text>
+        </View>
+      ) : null}
       {section.sentences.map((s, idx) => (
         <SentenceLine
           key={idx}
@@ -464,8 +480,9 @@ function SectionBlock({
             const num = idToNum.get(id);
             if (!meta) return null;
             const path = meta.section_path?.filter(Boolean).join(" > ") ?? "";
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return (
-              <Text key={id} style={{ marginBottom: 1 }}>
+              <Text key={id} style={{ marginBottom: 1, wordBreak: "break-all" } as any}>
                 [{num}] {meta.url}
                 {path ? ` — ${path}` : ""}
               </Text>
@@ -651,7 +668,7 @@ function SectionPages({
       <View style={styles.sideRail} fixed />
       <View style={styles.pageInner}>
         {/* Section page header */}
-        <View style={styles.sectionPageHeader} fixed>
+        <View style={styles.sectionPageHeader}>
           <Text style={styles.sectionPageBrand}>Scaler · Personalised brief</Text>
         </View>
 
@@ -702,12 +719,10 @@ export function LeadPDF({
 }: LeadPDFProps): JSX.Element {
   const cfg = resolvePDFStyle(persona);
 
-  // Use Inter if registered, otherwise Helvetica (font_family default).
-  // We override font_family to "Inter" here only if registration didn't throw.
-  // Since we wrapped registration in try/catch we can't know at this point
-  // whether it succeeded without a sentinel. We attempt "Inter" and react-pdf
-  // silently falls back to Helvetica when the family isn't found.
-  const resolvedFontFamily = cfg.font_family === "Helvetica" ? "Helvetica" : "Inter";
+  // Use Inter only if local font files were registered successfully.
+  // _interRegistered is set to true inside the try block above; if the
+  // try/catch swallowed an error it stays false and we use Helvetica.
+  const resolvedFontFamily = _interRegistered && cfg.font_family !== "Helvetica" ? "Inter" : "Helvetica";
   const cfgWithFont: PDFStyleConfig = { ...cfg, font_family: resolvedFontFamily };
 
   const styles = buildStyles(cfgWithFont);

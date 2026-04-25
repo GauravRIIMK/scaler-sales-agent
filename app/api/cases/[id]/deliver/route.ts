@@ -88,6 +88,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
+  // ── Atomic compare-and-swap guard (Fix 1) ────────────────────────────────
+  // "sending" is not in the case_state enum, so we cannot use a transient
+  // state value without a migration.  Instead we use the delivery_sid column
+  // as a boolean sentinel: we atomically stamp it to "in_flight" only when it
+  // is currently NULL.  A concurrent second request will see delivery_sid IS
+  // NOT NULL on the row it already loaded (state is still approved/edited) and
+  // be blocked by the .is("delivery_sid", null) filter — it gets 0 rows back
+  // and returns 409 without calling Twilio.
+  // On success the final update overwrites "in_flight" with the real Twilio SID.
+  // On failure we clear delivery_sid back to NULL so the case can be retried.
+  const originalState = row.state as string; // "approved" | "edited" — for rollback
+  const { data: lockRow, error: lockErr } = await supabase
+    .from("lead_cases")
+    .update({ delivery_sid: "in_flight" })
+    .eq("id", caseId)
+    .in("state", ["approved", "edited"])
+    .is("delivery_sid", null)
+    .select("id")
+    .maybeSingle();
+
+  if (lockErr || !lockRow) {
+    return NextResponse.json(
+      {
+        error: "another delivery attempt is already in flight or state changed",
+        case_id: caseId,
+      },
+      { status: 409 }
+    );
+  }
+
   const to = body.to ?? (row.evaluator_phone as string | null);
   if (!to) {
     return NextResponse.json(
@@ -110,6 +140,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       component,
     });
   } catch (e) {
+    // Roll back the in_flight sentinel so the case can be retried.
+    await supabase
+      .from("lead_cases")
+      .update({ delivery_sid: null })
+      .eq("id", caseId)
+      .eq("delivery_sid", "in_flight");
+    await log({
+      case_id: caseId,
+      task_id: "4.1-deliver",
+      component,
+      level: "WARN",
+      event: "deliver_in_flight_rollback",
+      error_message: `Twilio send failed; rolled delivery_sid back to null. Original state: ${originalState}. Error: ${String(e).slice(0, 200)}`,
+    });
     return NextResponse.json(
       { error: `twilio send failed: ${String(e).slice(0, 200)}`, case_id: caseId },
       { status: 502 }

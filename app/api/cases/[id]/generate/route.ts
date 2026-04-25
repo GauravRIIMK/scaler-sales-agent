@@ -45,7 +45,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const { data: row, error } = await supabase
     .from("lead_cases")
-    .select("id, lead_profile, transcript_text, audio_blob_url, state")
+    .select("id, lead_profile, transcript_text, audio_blob_url, state, language")
     .eq("id", caseId)
     .single();
   if (error || !row) {
@@ -132,7 +132,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // 2. Extract questions.
   let extractResult;
   try {
-    extractResult = await extractQuestions(transcript, { caseId, component });
+    extractResult = await extractQuestions(transcript, { caseId, component, language: (row.language as string | null) ?? undefined });
   } catch (e) {
     await log({
       case_id: caseId,
@@ -162,6 +162,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       transcript_excerpt: transcript.slice(0, 4000),
       caseId,
       component,
+      language: (row.language as string | null) ?? undefined,
     });
   } catch (e) {
     await log({
@@ -223,6 +224,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       retrievedChunksByQuestion: retrievedByIdx,
       caseId,
       component,
+      language: (row.language as string | null) ?? undefined,
     });
   } catch (e) {
     await log({

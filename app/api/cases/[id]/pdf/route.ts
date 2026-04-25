@@ -133,11 +133,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // 4. Upload to Supabase Storage.
   const bucket = process.env.SUPABASE_BUCKET_PDFS || "scaler-sales-pdfs";
-  const objectPath = `cases/${caseId}/${Date.now()}.pdf`;
+  const objectPath = `cases/${caseId}/lead-brief.pdf`;
 
   const { error: uploadErr } = await supabase.storage.from(bucket).upload(objectPath, pdfBytes, {
     contentType: "application/pdf",
-    upsert: false,
+    upsert: true,
   });
   if (uploadErr) {
     await log({

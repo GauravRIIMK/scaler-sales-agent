@@ -1,5 +1,24 @@
 import { isSupabaseConfigured, supabaseServer } from "./supabase";
 
+const PII_KEY_RE = /(phone|whatsapp|email|address|password|api[_-]?key|token|secret|sid|auth|otp)/i;
+
+function redactPayload(p: Record<string, unknown> | undefined | null): Record<string, unknown> | null {
+  if (!p) return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(p)) {
+    if (PII_KEY_RE.test(k)) {
+      if (v == null) { out[k] = null; continue; }
+      const s = typeof v === "string" ? v : JSON.stringify(v);
+      out[k] = s.length <= 4 ? "****" : `${s.slice(0, 2)}…${s.slice(-2)}`;
+    } else if (v && typeof v === "object" && !Array.isArray(v)) {
+      out[k] = redactPayload(v as Record<string, unknown>);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL";
 
 export interface LogRow {
@@ -53,7 +72,7 @@ export async function log(row: LogRow): Promise<void> {
       fallback_of: row.fallback_of ?? null,
       error_code: row.error_code ?? null,
       error_message: row.error_message ?? null,
-      payload: row.payload ?? null,
+      payload: redactPayload(row.payload) ?? null,
     });
   } catch (e) {
     console.error("[log] insert failed (non-fatal):", String(e).slice(0, 200));

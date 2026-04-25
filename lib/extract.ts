@@ -13,6 +13,7 @@
  */
 import { claudeMessage, extractToolUse } from "./anthropic";
 import { log } from "./log";
+import { sanitizeForPrompt } from "./sanitize";
 import type Anthropic from "@anthropic-ai/sdk";
 
 export type ConcernType =
@@ -299,15 +300,16 @@ export function parseLooseTranscript(raw: string): Turn[] {
 
 async function pass1(
   turns: Turn[],
-  ctx: { caseId?: string; component: string }
+  ctx: { caseId?: string; component: string; language?: string }
 ): Promise<Concern[]> {
+  const langHint = ctx.language ? `\nLanguage hint: ${ctx.language}` : "";
   const msg = await claudeMessage({
     tier: "haiku",
     system: PASS1_SYSTEM,
     messages: [
       {
         role: "user",
-        content: `Transcript:\n\n${formatTranscript(turns)}\n\nCall the record_concerns tool. If the LEAD raised nothing, return concerns: [].`,
+        content: `Transcript:\n\n${formatTranscript(turns)}\n\nCall the record_concerns tool. If the LEAD raised nothing, return concerns: [].${langHint}`,
       },
     ],
     tools: [pass1Tool()],
@@ -335,17 +337,18 @@ async function pass1(
 
 async function pass2(
   concerns: Concern[],
-  ctx: { caseId?: string; component: string }
+  ctx: { caseId?: string; component: string; language?: string }
 ): Promise<ExtractedQuestion[]> {
   if (concerns.length === 0) return [];
   const indexed = concerns.map((c, i) => `[${i}] (${c.concern_type}, ${c.is_stated ? "stated" : "implicit"}) ${c.text_excerpt}`).join("\n");
+  const langHint = ctx.language ? `\nLanguage hint: ${ctx.language}` : "";
   const msg = await claudeMessage({
     tier: "sonnet",
     system: PASS2_SYSTEM,
     messages: [
       {
         role: "user",
-        content: `Concerns to rewrite:\n\n${indexed}\n\nCall record_questions with one entry per concern, in the same order (source_index = 0..${concerns.length - 1}).`,
+        content: `Concerns to rewrite:\n\n${indexed}\n\nCall record_questions with one entry per concern, in the same order (source_index = 0..${concerns.length - 1}).${langHint}`,
       },
     ],
     tools: [pass2Tool()],
@@ -379,15 +382,16 @@ async function pass2(
 
 async function fallbackSinglePass(
   turns: Turn[],
-  ctx: { caseId?: string; component: string }
+  ctx: { caseId?: string; component: string; language?: string }
 ): Promise<ExtractedQuestion[]> {
+  const langHint = ctx.language ? `\nLanguage hint: ${ctx.language}` : "";
   const msg = await claudeMessage({
     tier: "haiku",
     system: FALLBACK_SYSTEM,
     messages: [
       {
         role: "user",
-        content: `Transcript:\n\n${formatTranscript(turns)}\n\nCall record_questions once with every LEAD-originated question.`,
+        content: `Transcript:\n\n${formatTranscript(turns)}\n\nCall record_questions once with every LEAD-originated question.${langHint}`,
       },
     ],
     tools: [fallbackTool()],
@@ -425,6 +429,7 @@ async function fallbackSinglePass(
 export interface ExtractOpts {
   caseId?: string;
   component?: string;
+  language?: string;
 }
 
 /**
@@ -438,15 +443,18 @@ export async function extractQuestions(
   const component = opts.component ?? "extract";
   const turns = typeof turnsOrText === "string" ? parseLooseTranscript(turnsOrText) : turnsOrText;
 
+  // Sanitise each turn's text before interpolating into LLM prompts.
+  const safeTurns = turns.map((t) => ({ ...t, text: sanitizeForPrompt(t.text, { maxChars: 6000 }) }));
+
   await log({
     case_id: opts.caseId,
     task_id: "2.3-extract",
     component,
     event: "extract_start",
-    payload: { turn_count: turns.length, lead_turns: turns.filter((t) => t.speaker === "LEAD").length },
+    payload: { turn_count: safeTurns.length, lead_turns: safeTurns.filter((t) => t.speaker === "LEAD").length, language: opts.language ?? null },
   });
 
-  if (turns.length === 0) {
+  if (safeTurns.length === 0) {
     return {
       questions: [],
       concerns_raw: [],
@@ -458,7 +466,7 @@ export async function extractQuestions(
 
   let concerns: Concern[] = [];
   try {
-    concerns = await pass1(turns, { caseId: opts.caseId, component });
+    concerns = await pass1(safeTurns, { caseId: opts.caseId, component, language: opts.language });
     await log({
       case_id: opts.caseId,
       task_id: "2.3-extract",
@@ -479,7 +487,7 @@ export async function extractQuestions(
   }
 
   try {
-    const questions = await pass2(concerns, { caseId: opts.caseId, component });
+    const questions = await pass2(concerns, { caseId: opts.caseId, component, language: opts.language });
     await log({
       case_id: opts.caseId,
       task_id: "2.3-extract",
@@ -497,7 +505,7 @@ export async function extractQuestions(
       event: "extract_pass2_failed_falling_back",
       error_message: String(e).slice(0, 500),
     });
-    const questions = await fallbackSinglePass(turns, { caseId: opts.caseId, component });
+    const questions = await fallbackSinglePass(safeTurns, { caseId: opts.caseId, component, language: opts.language });
     await log({
       case_id: opts.caseId,
       task_id: "2.3-extract",
