@@ -43,14 +43,22 @@ export default async function CasesIndex() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Recent cases</h1>
-        <Link
-          href="/cases/new"
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-        >
-          + New case
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/leads/new"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            + New lead (Stage A)
+          </Link>
+          <Link
+            href="/cases/new"
+            className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            + Single-shot case
+          </Link>
+        </div>
       </header>
 
       {rows.length === 0 ? (

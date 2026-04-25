@@ -133,6 +133,11 @@ export async function fireOne(args: FireOneArgs): Promise<FireResult> {
 
   // 4. Transition state. Guarded update so a cron-vs-manual race can't
   // double-transition.
+  //
+  // IMPORTANT: do NOT write to `delivery_sid` here. That column is the
+  // atomic lock for the lead-facing PDF delivery (see deliver/route.ts —
+  // it requires `delivery_sid IS NULL` to begin). The BDA nudge Twilio
+  // SID is captured in the `nudge_fired_ok` log event instead.
   const sentAt = new Date().toISOString();
   const { data: updated, error: updErr } = await supabase
     .from("lead_cases")
@@ -140,7 +145,6 @@ export async function fireOne(args: FireOneArgs): Promise<FireResult> {
       state: "nudge_sent",
       nudge_sent_at: sentAt,
       nudge_fired_by: firedBy,
-      delivery_sid: send.sid,
     })
     .eq("id", caseId)
     .eq("state", "nudge_scheduled")

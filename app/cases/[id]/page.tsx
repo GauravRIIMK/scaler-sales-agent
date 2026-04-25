@@ -12,6 +12,7 @@ import type { PDFContent, PDFSection } from "@/lib/pdfContent";
 import type { PersonaVector } from "@/lib/persona";
 import type { ExtractedQuestion } from "@/lib/extract";
 import { ApprovalPanel } from "./ApprovalPanel";
+import { PostCallPanel } from "./PostCallPanel";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,13 @@ export const runtime = "nodejs";
 interface CaseRow {
   id: string;
   evaluator_phone: string | null;
+  bda_whatsapp: string | null;
+  bda_name: string | null;
+  scheduled_call_at: string | null;
+  nudge_sent_at: string | null;
+  nudge_fired_by: string | null;
+  bda_nudge_whatsapp_plaintext: string | null;
+  audio_blob_url: string | null;
   lead_profile: Record<string, unknown> | null;
   transcript_text: string | null;
   extracted_questions: ExtractedQuestion[] | null;
@@ -38,7 +46,7 @@ async function loadCase(id: string): Promise<CaseRow | null> {
   const { data, error } = await supabase
     .from("lead_cases")
     .select(
-      "id, evaluator_phone, lead_profile, transcript_text, extracted_questions, persona_vector, pdf_content, covering_msg, pdf_url, bda_nudge_markdown, state, delivery_sid, created_at, delivered_at"
+      "id, evaluator_phone, bda_whatsapp, bda_name, scheduled_call_at, nudge_sent_at, nudge_fired_by, bda_nudge_whatsapp_plaintext, audio_blob_url, lead_profile, transcript_text, extracted_questions, persona_vector, pdf_content, covering_msg, pdf_url, bda_nudge_markdown, state, delivery_sid, created_at, delivered_at"
     )
     .eq("id", id)
     .single();
@@ -48,6 +56,8 @@ async function loadCase(id: string): Promise<CaseRow | null> {
 
 function Badge({ state }: { state: string }) {
   const palette: Record<string, string> = {
+    nudge_scheduled: "bg-violet-100 text-violet-800",
+    nudge_sent: "bg-indigo-100 text-indigo-800",
     received: "bg-slate-200 text-slate-800",
     transcribing: "bg-slate-200 text-slate-800",
     questions_extracted: "bg-sky-100 text-sky-800",
@@ -109,12 +119,15 @@ function StepBanner({ state }: { state: string }) {
     );
   }
 
-  // Determine step states
-  // step1 = Review PDF (active while still preparing or awaiting; done once approved/edited/delivered)
-  // step2 = Approve (active once approved or edited but not yet delivered; done when delivered)
-  // step3 = Send (active once approved or edited but not yet delivered; done when delivered)
+  // Two-stage flow steps:
+  //   step0 = Pre-call nudge fired (active while nudge_scheduled; done at nudge_sent+)
+  //   step1 = Post-call ingest (active during nudge_sent; done once received+)
+  //   step2 = Generate + Review PDF (active during received..awaiting_approval; done at approved+)
+  //   step3 = Approve + Send (active at approved/edited; done at delivered)
 
-  const PREPARING_STATES = new Set([
+  const PRE_CALL = new Set(["nudge_scheduled"]);
+  const PRE_INGEST = new Set(["nudge_sent"]);
+  const PREPARING = new Set([
     "received",
     "transcribing",
     "questions_extracted",
@@ -125,11 +138,14 @@ function StepBanner({ state }: { state: string }) {
     "awaiting_approval",
   ]);
 
-  const step1Done = state === "approved" || state === "edited" || state === "delivered";
-  const step1Active = !step1Done && PREPARING_STATES.has(state);
+  const step0Active = PRE_CALL.has(state);
+  const step0Done = !PRE_CALL.has(state); // anything past nudge_scheduled means nudge sent
 
-  const step2Done = state === "delivered";
-  const step2Active = (state === "approved" || state === "edited") && !step2Done;
+  const step1Active = PRE_INGEST.has(state);
+  const step1Done = !PRE_CALL.has(state) && !PRE_INGEST.has(state);
+
+  const step2Active = PREPARING.has(state);
+  const step2Done = state === "approved" || state === "edited" || state === "delivered";
 
   const step3Done = state === "delivered";
   const step3Active = (state === "approved" || state === "edited") && !step3Done;
@@ -163,18 +179,23 @@ function StepBanner({ state }: { state: string }) {
     <section className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2">
-          {circle(1, step1Active, step1Done)}
-          {label("Review the PDF preview below", step1Active, step1Done)}
+          {circle(1, step0Active, step0Done)}
+          {label("Pre-call nudge → BDA", step0Active, step0Done)}
         </div>
         {arrow}
         <div className="flex items-center gap-2">
-          {circle(2, step2Active, step2Done)}
-          {label("Approve (or edit covering message)", step2Active, step2Done)}
+          {circle(2, step1Active, step1Done)}
+          {label("Upload post-call recording", step1Active, step1Done)}
         </div>
         {arrow}
         <div className="flex items-center gap-2">
-          {circle(3, step3Active, step3Done)}
-          {label("Send to lead on WhatsApp", step3Active, step3Done)}
+          {circle(3, step2Active, step2Done)}
+          {label("Review generated PDF", step2Active, step2Done)}
+        </div>
+        {arrow}
+        <div className="flex items-center gap-2">
+          {circle(4, step3Active, step3Done)}
+          {label("Approve + send to lead", step3Active, step3Done)}
         </div>
       </div>
     </section>
@@ -291,6 +312,74 @@ export default async function CasePage({ params }: { params: { id: string } }) {
 
       <StepBanner state={row.state} />
 
+      {/* Stage-A summary — visible from nudge_scheduled onward so the BDA can
+          confirm what was scheduled / sent without bouncing back to /leads/new. */}
+      {(row.scheduled_call_at || row.bda_whatsapp || row.nudge_sent_at) && (
+        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Stage A — pre-call
+          </h2>
+          <dl className="grid grid-cols-1 gap-y-1 text-xs sm:grid-cols-[10rem_1fr]">
+            {row.scheduled_call_at && (
+              <>
+                <dt className="text-slate-500">Scheduled call</dt>
+                <dd className="text-slate-800">
+                  {new Date(row.scheduled_call_at).toLocaleString()}
+                </dd>
+              </>
+            )}
+            {row.bda_whatsapp && (
+              <>
+                <dt className="text-slate-500">BDA WhatsApp</dt>
+                <dd className="font-mono text-slate-800">
+                  {row.bda_whatsapp}
+                  {row.bda_name ? <span className="ml-2 text-slate-500">({row.bda_name})</span> : null}
+                </dd>
+              </>
+            )}
+            {row.nudge_sent_at && (
+              <>
+                <dt className="text-slate-500">Nudge sent</dt>
+                <dd className="text-slate-800">
+                  {new Date(row.nudge_sent_at).toLocaleString()}
+                  {row.nudge_fired_by ? (
+                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                      {row.nudge_fired_by}
+                    </span>
+                  ) : null}
+                </dd>
+              </>
+            )}
+          </dl>
+
+          {row.bda_nudge_whatsapp_plaintext && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs font-medium text-slate-600 hover:text-slate-800">
+                Show what was sent to the BDA
+              </summary>
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 font-sans text-xs text-slate-800">
+                {row.bda_nudge_whatsapp_plaintext}
+              </pre>
+            </details>
+          )}
+        </section>
+      )}
+
+      {/* Stage-B post-call panel — only renders before /generate has run. Once
+          the row is awaiting_approval+ this section disappears and the existing
+          ApprovalPanel takes over. */}
+      {(["nudge_scheduled", "nudge_sent", "received", "transcribing"].includes(row.state) ||
+        row.state === "failed") && (
+        <PostCallPanel
+          caseId={row.id}
+          state={row.state}
+          evaluatorPhone={row.evaluator_phone}
+          bdaWhatsapp={row.bda_whatsapp}
+          hasTranscript={!!row.transcript_text}
+          hasAudio={!!row.audio_blob_url}
+        />
+      )}
+
       {row.extracted_questions && row.extracted_questions.length > 0 && (
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -334,13 +423,23 @@ export default async function CasePage({ params }: { params: { id: string } }) {
         </section>
       )}
 
-      <ApprovalPanel
-        caseId={row.id}
-        initialCoveringMsg={row.covering_msg ?? ""}
-        evaluatorPhone={row.evaluator_phone}
-        pdfUrl={row.pdf_url}
-        currentState={row.state}
-      />
+      {/* Approval gate — only relevant once we have something to approve.
+          In pre-ingest / pre-generate states the PostCallPanel handles things. */}
+      {[
+        "awaiting_approval",
+        "approved",
+        "edited",
+        "delivered",
+        "skipped",
+      ].includes(row.state) && (
+        <ApprovalPanel
+          caseId={row.id}
+          initialCoveringMsg={row.covering_msg ?? ""}
+          evaluatorPhone={row.evaluator_phone}
+          pdfUrl={row.pdf_url}
+          currentState={row.state}
+        />
+      )}
     </main>
   );
 }

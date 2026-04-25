@@ -20,18 +20,39 @@ Key design calls:
 - **Hybrid retrieval with a refuse gate.** BM25 (`pg_trgm` tsvector) + dense cosine (`pgvector`, `voyage-3-large`, 1024d) fused via RRF (`k=60`), then reranked by `voyage-rerank-2.5`. If the top rerank score `< 0.35` → the gate returns `refused`, and downstream generators print `renderRefusal()` instead of hallucinating.
 - **Persona-config compositional styling.** `lib/pdf/personaConfigs.ts` merges axis-specific overlays into a single `PDFStyleConfig`; `LeadPDF.tsx` builds the StyleSheet dynamically. Three sample personas are guaranteed to produce pairwise-distinct layouts (section order, callouts, density, colour).
 - **Approval gate is first-class.** `/cases/[id]` renders the generated sections, the covering message as an editable textarea, a step banner (① Review → ② Approve → ③ Send), and Approve / Edit / Skip buttons. Every state-mutating route (`/decision`, `/pdf`, `/deliver`, `/nudge/send`) requires the `x-bda-approval-code` header — checked against the `BDA_APPROVAL_CODE` env var. The Approval Panel pre-fills the demo code from `localStorage`, persisting it across sessions. `bda_edits` stores a section-level diff history so DPO-style fine-tuning is an unlock, not a rewrite.
-- **Single-screen evaluator intake.** `/cases/new` collects everything upfront with structured fields (lead name, role, company, experience, location, education, goals, concerns, budget) plus call source (transcript or audio) plus recipients (lead WhatsApp, BDA WhatsApp, BDA name, language). An Advanced JSON escape hatch is hidden in a `<details>` for power-users. A 10-step pipeline indicator + sticky submit summary make wait-time expectations explicit.
+- **Two-stage flow modelling the assignment.** `/leads/new` (Stage A) collects only what the BDA actually has *before* the call — profile + scheduled call time + recipients — and parks the row in `nudge_scheduled`. A cron tick (`/api/cron/fire-nudges`, every 5 min) auto-fires the profile-only WhatsApp nudge to the BDA `NUDGE_LEAD_MINUTES` (default 60) ahead of the scheduled call, with a manual override (`/api/leads/[id]/fire-nudge-now`) for the demo. After the call the BDA returns to `/cases/[id]` and uses the **Post-call ingest** panel to upload transcript or audio, which triggers `/post-call → /generate` and lands at `awaiting_approval`. The legacy single-shot `/cases/new` is still wired for power-users and the smoke script.
 
 ### Pipeline (routes)
 
+**Stage A — pre-call (assignment-correct two-stage path):**
+
 ```
-POST /api/cases/new                   create row, store profile + transcript/audio
+POST /api/leads                       create lead row in 'nudge_scheduled' + schedule call
+GET  /api/cron/fire-nudges            cron tick: fire BDA nudges whose call is within LEAD min
+POST /api/leads/[id]/fire-nudge-now   manual override (demo button + seed scripts)
+```
+
+**Stage B — post-call:**
+
+```
+POST /api/cases/[id]/post-call        upload transcript/audio onto existing lead → 'received'
 POST /api/cases/[id]/generate         STT → extract → persona → retrieve → pdfContent → verify
 POST /api/cases/[id]/pdf              render PDF via @react-pdf/renderer + upload to Storage
+POST /api/cases/[id]/decision         record Approve / Edit / Skip (gates /pdf and /deliver)
+POST /api/cases/[id]/deliver          WhatsApp the PDF + covering message to the lead
+```
+
+**Legacy single-shot (still wired; used by `scripts/smoke.mjs` and `scripts/seed-personas.mjs`):**
+
+```
+POST /api/cases/new                   create row with profile + transcript/audio bundled
 POST /api/cases/[id]/nudge            generate BDA nudge + persist markdown
 POST /api/cases/[id]/nudge/send       WhatsApp the nudge to the BDA
-POST /api/cases/[id]/decision         record Approve / Edit / Skip
-POST /api/cases/[id]/deliver          WhatsApp the PDF + covering message to the lead
+```
+
+**Shared:**
+
+```
 POST /api/twilio/status               Twilio statusCallback webhook (signature-verified)
 GET  /api/health                      env + integration readiness
 ```
@@ -76,40 +97,53 @@ Required secrets (see `.env.example` for the full list):
 - `PUBLIC_APP_URL` — used to compute Twilio `statusCallback` target
 - `BDA_APPROVAL_CODE` — shared secret that gates Approve / PDF render / Deliver. Pick any string; the demo deployment uses `SCALER-APPROVE-9421`.
 
-Apply migrations in order: `0001_init.sql` → `0002_retrieve_rpc.sql` → `0003_bda_whatsapp.sql`. The 0002 RPC is the hybrid BM25+dense+RRF retrieval primitive; 0003 adds BDA-side columns (`bda_whatsapp`, `bda_name`, `language`, `bda_nudge_whatsapp_plaintext`) so the nudge send route can dispatch the LLM-crafted plaintext verbatim instead of regex-stripping markdown.
+Apply migrations in order: `0001_init.sql` → `0002_retrieve_rpc.sql` → `0003_bda_whatsapp.sql` → `0004_language_constraint.sql` → `0005_nudge_states.sql` → `0006_pre_call_columns.sql`. The 0002 RPC is the hybrid BM25+dense+RRF retrieval primitive; 0003 adds BDA-side columns (`bda_whatsapp`, `bda_name`, `language`, `bda_nudge_whatsapp_plaintext`) so the nudge-send route can dispatch the LLM-crafted plaintext verbatim instead of regex-stripping markdown; 0005–0006 introduce the two-stage state machine (`nudge_scheduled` / `nudge_sent`) plus `scheduled_call_at`, `nudge_sent_at`, `nudge_fired_by`, `audio_blob_url`, and the `persona_vector` JSONB column populated by the pre-call nudge generator. Run `node scripts/apply_migrations.mjs` to apply all in order against the env in `.env.local`.
 
-### Demo flow
+### Demo flow (two-stage — what the Loom records)
 
-1. **`/cases/new`** — fill the structured form. Three sections, top to bottom:
-   1. **Lead** — name, role, company, years of experience, location, education, goals (textarea), concerns (textarea), budget range.
-   2. **Call** — pick *Transcript* (paste text) or *Audio* (upload `.wav`/`.mp3`/`.m4a`). The audio path runs Deepgram Nova-3 with diarisation; transcript path skips STT.
-   3. **Recipients** — lead's WhatsApp number, the BDA's WhatsApp number, the BDA's display name, and the spoken language (`en-IN` / `en-US` / `hi`).
-   Click **Run agent** and the page redirects to `/cases/[id]`.
-2. **`/cases/[id]`** — the step banner shows ① Review PDF → ② Approve → ③ Send to lead. The page renders questions, persona archetype, all sections (with chunk-ID footers), and the BDA nudge (markdown + WhatsApp plaintext preview).
-3. **Approve** — paste the BDA approval code (pre-filled in the demo build from `localStorage`). Click *Approve & lock*. State moves `awaiting_approval → approved`. The PDF is now renderable.
-4. **Send to lead on WhatsApp** — same code, single click. State moves `approved → delivered`. Twilio dispatches the covering message + signed PDF link to the lead's number.
-5. **Send pre-call nudge to BDA** — separate button, also code-gated. Twilio sends the 1500-char Who/Hooks/Objections/Open with/Flag plaintext to the BDA's WhatsApp.
-6. Check `/api/health` for integration readiness; `/cases` for history.
+The four-step page banner on `/cases/[id]` mirrors this exactly: ① Pre-call nudge → BDA → ② Review PDF → ③ Approve → ④ Send to lead.
 
-### One-shot smoke test
+**Stage A — pre-call (BDA receives a profile-only WhatsApp nudge):**
+
+1. **`/leads/new`** — fill the Stage-A form:
+   1. **Lead profile** — paste a free-form paragraph (LinkedIn bio, intake notes, sales-ops note) and click **Extract profile**. Haiku parses it into structured fields you can edit. An *Advanced JSON* escape hatch is hidden in `<details>` for power-users.
+   2. **Schedule the call** — `datetime-local` picker (defaults to T+75 min so the cron fires in ~15 min) plus language (`en-IN` / `en-US` / `hi`).
+   3. **Recipients** — BDA's WhatsApp (required — that's where the nudge goes), BDA name, and the lead's WhatsApp (optional at this stage; can be added later for PDF delivery).
+   Click **Create lead + schedule nudge**. The row lands in `state='nudge_scheduled'`.
+2. **Pre-call nudge fires** — two paths:
+   - **Cron**: `GET /api/cron/fire-nudges` runs every 5 min (Vercel Cron / Supabase scheduled function). It picks up rows whose `scheduled_call_at` is within `NUDGE_LEAD_MINUTES` (default 60) and fires.
+   - **Manual** (Loom-friendly): click **Fire nudge now (skip cron)** on the success panel, or use the same button on `/cases/[id]`. Hits `POST /api/leads/[id]/fire-nudge-now`. State moves `nudge_scheduled → nudge_sent`. The BDA receives a 1500-char Who/Hooks/Objections/Open with/Flag plaintext via Twilio WhatsApp.
+
+**Stage B — post-call (BDA uploads the call, lead receives a personalised PDF):**
+
+3. **`/cases/[id]`** — once the call is done, the BDA opens the case page and sees the **Post-call ingest** panel. Pick *Transcript* (paste text) or *Audio* (upload `.wav`/`.mp3`/`.m4a`). The audio path runs Deepgram Nova-3 with diarisation; transcript path skips STT. Optionally fill in the lead's WhatsApp here if it wasn't set in Stage A. Click **Upload + run agent**. The page hits `POST /api/cases/[id]/post-call` then `POST /api/cases/[id]/generate`. State traces `received → transcribing → questions_extracted → persona_inferred → retrieved → generated → verified → awaiting_approval`.
+4. **Review** — the page renders the inferred persona archetype + 5-axis chips, the extracted questions, the generated sections (with chunk-ID footers per fact-sentence), and the editable covering message.
+5. **Approve** — paste the BDA approval code (pre-filled from `localStorage` in the demo build), click *Approve & lock*. State moves `awaiting_approval → approved`. The PDF is now renderable. *(Edit / Skip are also available — Edit captures a section-level diff into `bda_edits`; Skip terminates the case.)*
+6. **Send to lead on WhatsApp** — same code, single click. State moves `approved → delivered`. Twilio dispatches the covering message + the rendered PDF as a media attachment to the lead's WhatsApp number (Twilio MM SID, not a link).
+
+Check `/api/health` for env + integration readiness; `/cases` for the history index.
+
+### Smoke / seed scripts
+
+| Script | What it covers |
+| --- | --- |
+| `scripts/smoke.mjs` | Legacy single-shot path — `new → generate → pdf-without-code (expect 401) → decision approve → pdf-with-code → nudge`. Useful for sanity-checking the post-call pipeline in isolation. |
+| `scripts/seed-personas.mjs` | Three canonical personas (Rohan / Karthik / Meera per R16) via the legacy single-shot path. Asserts pairwise-distinct archetypes (R37). |
+| `scripts/seed-two-stage.mjs` | Same three personas via the **assignment-correct two-stage flow**: `POST /api/leads → fire-nudge-now → post-call → generate → decision approve → deliver`. This is what the Loom mirrors. |
+| `scripts/test-audio-ingest.mjs` | R15 audio path — generates a TTS WAV, uploads it through `/post-call`, asserts STT transcribes it and the rest of the pipeline runs. |
+
+Two-stage example (recommended):
 
 ```bash
-# Local
 PORT=3002 npm run dev
 BASE=http://localhost:3002 \
-  SMOKE_LEAD_PHONE=whatsapp:+91XXXXXXXXXX \
-  SMOKE_BDA_PHONE=whatsapp:+91XXXXXXXXXX \
-  node scripts/smoke.mjs
-
-# Production
-BASE=https://your-app.vercel.app \
   BDA_APPROVAL_CODE=SCALER-APPROVE-9421 \
-  SMOKE_LEAD_PHONE=whatsapp:+91XXXXXXXXXX \
-  SMOKE_BDA_PHONE=whatsapp:+91XXXXXXXXXX \
-  node scripts/smoke.mjs
+  SEED_BDA_PHONE=whatsapp:+91XXXXXXXXXX \
+  SEED_LEAD_PHONE=whatsapp:+91XXXXXXXXXX \
+  node scripts/seed-two-stage.mjs
 ```
 
-The script runs **new → generate → pdf-without-code (expect 401) → decision approve → pdf-with-code → nudge** and prints a compact report at each stage.
+Production swap: `BASE=https://your-app.vercel.app` and the same env vars.
 
 ### Twilio sandbox note
 
