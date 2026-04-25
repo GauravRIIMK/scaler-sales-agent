@@ -68,13 +68,27 @@ export interface SendResult {
 
 function defaultStatusCallback(): string | undefined {
   const explicit = process.env.TWILIO_STATUS_CALLBACK_URL;
-  if (explicit) return explicit;
-  const base =
-    process.env.PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
-  if (!base) return undefined;
-  const withProtocol = base.startsWith("http") ? base : `https://${base}`;
-  return `${withProtocol.replace(/\/$/, "")}/api/twilio/status`;
+  const candidate =
+    explicit ||
+    (() => {
+      const base =
+        process.env.PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
+      if (!base) return undefined;
+      const withProtocol = base.startsWith("http") ? base : `https://${base}`;
+      return `${withProtocol.replace(/\/$/, "")}/api/twilio/status`;
+    })();
+
+  if (!candidate) return undefined;
+  // Twilio rejects unreachable URLs ("not a valid URL"). In dev / CI the URL
+  // typically resolves to http://localhost:* or 127.0.0.1, which Twilio
+  // refuses outright. Drop the callback in those cases so the send still
+  // succeeds — we lose delivery webhook updates locally but the message
+  // goes out. Production / Vercel URLs pass through unchanged.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i.test(candidate)) {
+    return undefined;
+  }
+  return candidate;
 }
 
 async function recordDelivery(params: {

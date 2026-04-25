@@ -15,12 +15,22 @@ export default function HomePage() {
 
       <section className="space-y-3">
         <Link
+          href="/leads/new"
+          className="block rounded-xl border border-slate-900 bg-slate-900 p-4 text-white shadow-sm hover:bg-slate-800"
+        >
+          <div className="text-sm font-semibold">+ New lead (Stage A — pre-call)</div>
+          <div className="text-sm text-slate-300">
+            Schedule the call. The cron auto-fires a profile-only WhatsApp nudge to the
+            BDA at T &minus; 1h.
+          </div>
+        </Link>
+        <Link
           href="/cases/new"
           className="block rounded-xl border border-slate-300 bg-white p-4 shadow-sm hover:border-slate-900 hover:shadow-md"
         >
-          <div className="text-sm font-semibold">+ New case</div>
+          <div className="text-sm font-semibold">+ New case (legacy single-shot)</div>
           <div className="text-sm text-slate-600">
-            Start from a profile + transcript (or audio) and run the full pipeline.
+            Start from a profile + transcript (or audio) and run the full pipeline in one go.
           </div>
         </Link>
         <Link

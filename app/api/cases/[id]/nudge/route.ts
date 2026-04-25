@@ -1,32 +1,35 @@
 /**
- * Task 3.1 route — POST /api/cases/[id]/nudge
+ * POST /api/cases/[id]/nudge
  *
  * Generates the pre-call BDA nudge (markdown + WhatsApp plaintext) for the
- * given case. Assumes extract + persona + retrieve already ran (i.e. the
- * case is at least in state='persona_inferred').
+ * given case.
  *
- * The nudge itself is produced by lib/nudge.ts. This route is thin:
- *   - load the case
- *   - pool + rerank top chunks across every extracted question
- *   - call generateNudge
- *   - persist bda_nudge_markdown on the case
- *   - return both renderings
+ * As of the two-stage refactor, this route is a thin wrapper around
+ * lib/preCallNudge.ts — the assignment-correct, profile-only nudge
+ * generator. It no longer requires extracted_questions or persona_vector to
+ * exist; it derives retrieval queries from the lead_profile alone, infers
+ * persona from profile alone, and never references the transcript.
  *
- * Sending the nudge over WhatsApp is a separate route (Task 4.4).
+ * The legacy lib/nudge.ts (which consumed transcript-derived questions +
+ * persona) was removed because:
+ *   1. The assignment defines the BDA nudge as a PRE-CALL artifact — sent
+ *      ahead of the call, before any transcript can possibly exist.
+ *   2. Two callsites (cron auto-fire + manual fire-now) already use
+ *      preCallNudge. Having a second post-call-aware path was a footgun:
+ *      a manually-triggered post-/generate nudge would leak transcript
+ *      facts into a brief that ought to read pre-call-clean.
+ *
+ * Persisted columns (bda_nudge_markdown, bda_nudge_whatsapp_plaintext) are
+ * unchanged so the downstream /nudge/send route keeps working.
  */
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { log } from "@/lib/log";
-import { generateNudge, type LeadProfile } from "@/lib/nudge";
-import { retrieveGrounding, type GroundingHit } from "@/lib/retrieve";
-import type { ExtractedQuestion } from "@/lib/extract";
-import type { PersonaVector } from "@/lib/persona";
+import { generatePreCallNudge, type PreCallProfile } from "@/lib/preCallNudge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
-
-const TOP_CHUNKS_FOR_NUDGE = 3;
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const caseId = params.id;
@@ -38,7 +41,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const { data: row, error } = await supabase
     .from("lead_cases")
-    .select("id, lead_profile, extracted_questions, persona_vector, language")
+    .select("id, lead_profile, language")
     .eq("id", caseId)
     .single();
   if (error || !row) {
@@ -48,65 +51,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     );
   }
 
-  const profile = (row.lead_profile as LeadProfile) ?? {};
-  const questions = (row.extracted_questions as ExtractedQuestion[]) ?? [];
-  const persona = row.persona_vector as PersonaVector | null;
-
-  if (!persona) {
-    return NextResponse.json(
-      { error: "persona_vector missing — run /api/cases/[id]/generate first" },
-      { status: 409 }
-    );
-  }
-
-  // Pool top chunks across every extracted question, dedupe by chunk id,
-  // keep the highest rerank_score per id, take the top N.
-  const byId = new Map<string, GroundingHit>();
-  if (questions.length > 0) {
-    for (const q of questions) {
-      try {
-        const r = await retrieveGrounding(q.question_rewritten, {
-          caseId,
-          taskId: "3.1-nudge",
-          component,
-          topK: 3,
-        });
-        for (const h of r.hits) {
-          const prev = byId.get(h.id);
-          if (!prev || prev.rerank_score < h.rerank_score) byId.set(h.id, h);
-        }
-      } catch (e) {
-        await log({
-          case_id: caseId,
-          task_id: "3.1-nudge",
-          component,
-          level: "WARN",
-          event: "nudge_retrieve_question_failed",
-          error_message: String(e).slice(0, 500),
-          payload: { question: q.question_rewritten.slice(0, 200) },
-        });
-      }
-    }
-  }
-  const topChunks = [...byId.values()]
-    .sort((a, b) => b.rerank_score - a.rerank_score)
-    .slice(0, TOP_CHUNKS_FOR_NUDGE);
-
-  await log({
-    case_id: caseId,
-    task_id: "3.1-nudge",
-    component,
-    event: "nudge_chunks_pooled",
-    payload: { pooled: byId.size, kept: topChunks.length },
-  });
+  const profile = (row.lead_profile as PreCallProfile) ?? {};
 
   let nudge;
   try {
-    nudge = await generateNudge({
+    nudge = await generatePreCallNudge({
       profile,
-      questions,
-      persona,
-      topChunks,
       caseId,
       component,
       language: (row.language as string | null) ?? undefined,
@@ -114,7 +64,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   } catch (e) {
     await log({
       case_id: caseId,
-      task_id: "3.1-nudge",
+      task_id: "nudge-route",
       component,
       level: "ERROR",
       event: "nudge_generate_failed",
@@ -136,7 +86,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (updErr) {
     await log({
       case_id: caseId,
-      task_id: "3.1-nudge",
+      task_id: "nudge-route",
       component,
       level: "WARN",
       event: "nudge_persist_failed",
@@ -146,7 +96,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   await log({
     case_id: caseId,
-    task_id: "3.1-nudge",
+    task_id: "nudge-route",
     component,
     event: "nudge_ok",
     latency_ms: Date.now() - started,
@@ -155,6 +105,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       whatsapp_chars: nudge.char_count_whatsapp,
       degraded: nudge.degraded,
       model: nudge.model,
+      retrieved_chunk_count: nudge.retrieved_chunk_count,
+      derived_query_count: nudge.derived_queries.length,
+      persona_archetype: nudge.persona.archetype_label,
     },
   });
 
@@ -166,6 +119,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     sources_used: nudge.sources_used,
     degraded: nudge.degraded,
     model: nudge.model,
+    retrieved_chunks: nudge.retrieved_chunk_count,
+    derived_queries: nudge.derived_queries,
+    persona_archetype: nudge.persona.archetype_label,
   });
 }
 
