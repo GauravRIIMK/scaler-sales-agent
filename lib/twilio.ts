@@ -91,6 +91,79 @@ function defaultStatusCallback(): string | undefined {
   return candidate;
 }
 
+// Twilio terminal failure statuses. When a message reaches one of these,
+// WhatsApp has rejected it permanently — no further callbacks will improve
+// the outcome and our state machine must NOT mark the case 'delivered'.
+//
+// Most-frequent root causes in the WhatsApp Sandbox path:
+//   63015 — recipient outside the 24-hour conversation window (most common
+//           failure mode in dev: opt-in expired). Surfaces async after
+//           Twilio attempts WhatsApp delivery.
+//   63016 — same root cause, surfaces synchronously at create() time;
+//           already handled in the catch block below.
+//   63003 — channel could not find From number.
+//   21610 — recipient blocked the sender.
+const TERMINAL_FAILURE_STATUSES = new Set(["failed", "undelivered"]);
+const TERMINAL_DELIVERED_STATUSES = new Set(["delivered", "read"]);
+
+/**
+ * Post-create polling for the actual Twilio→WhatsApp delivery outcome.
+ *
+ * Twilio's `messages.create()` returns immediately with `status='queued'`
+ * (Twilio's internal queue accepted the request). The actual WhatsApp
+ * delivery happens async and resolves to `delivered`, `failed`, etc.
+ * In production we'd hear about this via statusCallback webhook — but in
+ * dev (where the callback URL would be localhost and Twilio refuses to
+ * register that), AND in any short-window race where the route handler
+ * returns before the callback fires, the case state would be incorrectly
+ * marked 'delivered' for messages WhatsApp actually rejected.
+ *
+ * This poller closes that gap. Within ~5 seconds (cumulative 800+1500+2500
+ * ms with three GET /Messages calls), most freeform-sandbox failures (63015)
+ * resolve. If still pending after 5s, return whatever the latest status is
+ * and let any later callback update delivery_events.
+ *
+ * Returns final observed status + error code/message.
+ */
+async function verifyDeliveryStatus(
+  client: ReturnType<typeof twilioClient>,
+  sid: string,
+  opts: { caseId?: string; component?: string; taskId?: string }
+): Promise<{ status: string; errorCode: string | null; errorMessage: string | null }> {
+  const delays = [800, 1500, 2500];
+  let last: { status: string; errorCode: string | null; errorMessage: string | null } = {
+    status: "queued",
+    errorCode: null,
+    errorMessage: null,
+  };
+  for (const ms of delays) {
+    await new Promise((r) => setTimeout(r, ms));
+    try {
+      const m = await client.messages(sid).fetch();
+      last = {
+        status: m.status,
+        errorCode: m.errorCode != null ? String(m.errorCode) : null,
+        errorMessage: m.errorMessage ?? null,
+      };
+      if (TERMINAL_FAILURE_STATUSES.has(m.status)) return last;
+      if (TERMINAL_DELIVERED_STATUSES.has(m.status)) return last;
+      // queued/accepted/sent — keep polling
+    } catch (e) {
+      await log({
+        case_id: opts.caseId,
+        task_id: opts.taskId ?? "4.1-send",
+        component: opts.component ?? "twilio_send",
+        provider: "twilio",
+        level: "WARN",
+        event: "whatsapp_status_poll_error",
+        error_message: String(e).slice(0, 200),
+      });
+      // Don't bail — try next iteration. Last known status remains.
+    }
+  }
+  return last;
+}
+
 async function recordDelivery(params: {
   caseId?: string;
   to: string;
@@ -267,18 +340,70 @@ async function send({ to, body, mediaUrl, opts = {} }: SendArgs): Promise<SendRe
     payload: { sid: msg.sid, status: msg.status, to: toAddr, from: fromAddr, has_media: !!mediaUrl },
   });
 
+  // Post-create verification: poll Twilio for the actual WhatsApp delivery
+  // outcome. Catches async failures (63015 sandbox-window violation being
+  // the most common in dev) that messages.create() doesn't surface.
+  // Skipped only if opts.skipVerify is explicitly true (reserved for tests).
+  const skipVerify = (opts as { skipVerify?: boolean }).skipVerify === true;
+  const verified = skipVerify
+    ? { status: msg.status, errorCode: null, errorMessage: null }
+    : await verifyDeliveryStatus(client, msg.sid, {
+        caseId: opts.caseId,
+        component,
+        taskId: "4.1-send",
+      });
+
+  await log({
+    case_id: opts.caseId,
+    task_id: "4.1-send",
+    component,
+    provider: "twilio",
+    event: "whatsapp_status_verified",
+    payload: {
+      sid: msg.sid,
+      initial_status: msg.status,
+      final_status: verified.status,
+      error_code: verified.errorCode,
+      error_message: verified.errorMessage?.slice(0, 200),
+    },
+  });
+
   await recordDelivery({
     caseId: opts.caseId,
     to: toAddr,
     from: fromAddr,
     sid: msg.sid,
-    status: msg.status,
+    status: verified.status, // verified, not the initial queued status
+    errorCode: verified.errorCode,
+    errorMessage: verified.errorMessage,
     hasMedia: !!mediaUrl,
   });
 
+  // Throw on terminal WhatsApp delivery failures so the caller's state
+  // transition (state=delivered) is never reached. The route handler will
+  // see this throw and surface the error to the API client. The most
+  // common cause in dev is 63015 (24h sandbox conversation window expired);
+  // we surface a friendly remediation message.
+  if (TERMINAL_FAILURE_STATUSES.has(verified.status)) {
+    if (verified.errorCode === "63015") {
+      const friendly = new Error(
+        `Twilio reports message ${msg.sid} ${verified.status}: recipient ${toAddr} is outside the 24-hour WhatsApp Sandbox conversation window. ` +
+          `Have them send "join <sandbox-code>" to ${fromAddr} again on WhatsApp, then retry. (Twilio error_code=63015)`
+      );
+      (friendly as unknown as { code: string }).code = verified.errorCode;
+      throw friendly;
+    }
+    const friendly = new Error(
+      `Twilio reports message ${msg.sid} ${verified.status} ` +
+        `(error_code=${verified.errorCode ?? "?"}, message=${verified.errorMessage?.slice(0, 200) ?? "(none)"}).`
+    );
+    if (verified.errorCode) (friendly as unknown as { code: string }).code = verified.errorCode;
+    throw friendly;
+  }
+
   return {
     sid: msg.sid,
-    status: msg.status,
+    status: verified.status, // verified, not the initial queued status
     to: toAddr,
     from: fromAddr,
     num_media: mediaUrl ? 1 : 0,

@@ -128,7 +128,10 @@ export async function fireOne(args: FireOneArgs): Promise<FireResult> {
       event: "nudge_send_failed",
       error_message: String(e).slice(0, 500),
     });
-    return { case_id: caseId, status: "failed", error: `send: ${String(e).slice(0, 180)}` };
+    // Bump slice to 500 so the full Twilio remediation message (e.g. for
+    // error_code 63015 — "have them text join <sandbox-code> again") is
+    // surfaced to the API caller, not just the first 180 chars.
+    return { case_id: caseId, status: "failed", error: `send: ${String(e).slice(0, 500)}` };
   }
 
   // 4. Transition state. Guarded update so a cron-vs-manual race can't
