@@ -2,6 +2,14 @@
 
 AI-assisted pre-call briefs and post-call personalised PDFs for Scaler BDAs. Both pieces delivered on WhatsApp. Every lead-facing send goes through an Approve / Edit / Skip gate.
 
+## Live demo
+
+**→ https://scaler-sales-agent-theta.vercel.app**
+
+No setup, no install — open the URL, enter your WhatsApp number once, and click any of the three pre-loaded persona cards (Rohan / Karthik / Meera) to walk the full two-stage flow. A custom-persona path is one click below the cards. Both Twilio sandbox numbers (`+1 415 523 8886`) need a `join <code>` opt-in from the recipient phone before WhatsApp will accept the messages.
+
+The deployment runs the same code that's in this repo. `/api/health` reports the live commit SHA. The BDA approval code for the demo deployment is `SCALER-APPROVE-9421` (pre-filled in the UI from `localStorage`).
+
 ## What you built
 
 An end-to-end pipeline that turns `(profile, call)` into two artefacts:
@@ -35,11 +43,17 @@ POST /api/leads/[id]/fire-nudge-now   manual override (demo button + seed script
 **Stage B — post-call:**
 
 ```
-POST /api/cases/[id]/post-call        upload transcript/audio onto existing lead → 'received'
-POST /api/cases/[id]/generate         STT → extract → persona → retrieve → pdfContent → verify
+POST /api/cases/[id]/audio-upload-url issues a Supabase signed PUT URL so the browser
+                                      can upload audio direct (bypasses Vercel 4.5MB
+                                      function payload cap). Returns { signed_upload_url, path }.
+POST /api/cases/[id]/post-call        accepts transcript / audio_path / audio_url / multipart audio
+                                      → 'received'
+POST /api/cases/[id]/generate         STT → extract → persona → retrieve (PBR-augmented)
+                                      → pdfContent → verify
 POST /api/cases/[id]/pdf              render PDF via @react-pdf/renderer + upload to Storage
 POST /api/cases/[id]/decision         record Approve / Edit / Skip (gates /pdf and /deliver)
-POST /api/cases/[id]/deliver          WhatsApp the PDF + covering message to the lead
+POST /api/cases/[id]/deliver          WhatsApp the PDF + covering message to the lead;
+                                      polls Twilio for actual delivery and throws on terminal failure
 ```
 
 **Legacy single-shot (still wired; used by `scripts/smoke.mjs` and `scripts/seed-personas.mjs`):**
