@@ -36,6 +36,7 @@ import { sanitizeForPrompt, sanitizeProfile } from "./sanitize";
 import type Anthropic from "@anthropic-ai/sdk";
 import { retrieveGrounding, formatCitation, type GroundingHit } from "./retrieve";
 import { inferPersona, type PersonaVector } from "./persona";
+import { augmentQueryWithPersona, describePersonaBias } from "./personaBias";
 
 const NUDGE_VERSION = "pre-call-nudge-v1";
 const WHATSAPP_CHAR_LIMIT = 600;
@@ -202,12 +203,16 @@ async function poolChunksForProfile(
   queries: string[],
   caseId: string | undefined,
   component: string,
-  language: string | undefined
+  language: string | undefined,
+  persona: PersonaVector | null | undefined // PBR: optional persona-bias
 ): Promise<GroundingHit[]> {
   const byId = new Map<string, GroundingHit>();
   for (const q of queries) {
+    // Persona-Biased Retrieval (AAAI 2026 PBR pattern). Empty/unknown
+    // persona = no-op; original query is preserved.
+    const biasedQuery = augmentQueryWithPersona(q, persona);
     try {
-      const r = await retrieveGrounding(q, {
+      const r = await retrieveGrounding(biasedQuery, {
         caseId,
         taskId: "pre-call-nudge",
         component,
@@ -361,10 +366,8 @@ export async function generatePreCallNudge(input: PreCallNudgeInput): Promise<Pr
   // 1. Derive retrieval queries from profile alone.
   const queries = buildPreCallProfileQueries(profile);
 
-  // 2. Retrieve + pool chunks. Empty pool is OK — the prompt handles it.
-  const topChunks = await poolChunksForProfile(queries, caseId, component, input.language);
-
-  // 3. Persona inference from profile alone. inferPersona's prompt already
+  // 2. Persona inference from profile alone — runs BEFORE retrieve so the
+  // pool can be persona-biased (PBR, AAAI 2026). inferPersona's prompt
   // accepts empty questions[] / empty transcript and degrades to the regex
   // fallback if the model refuses.
   let persona: PersonaVector;
@@ -406,6 +409,25 @@ export async function generatePreCallNudge(input: PreCallNudgeInput): Promise<Pr
       model: "fallback-empty",
     };
   }
+
+  // 3. Retrieve + pool chunks WITH persona-bias. Empty pool is OK — the
+  // prompt handles it. PBR augments each query with persona-axis terms
+  // before BM25+dense retrieval (caps confidence floor inside the helper).
+  const personaBiasInfo = describePersonaBias(persona);
+  await log({
+    case_id: caseId,
+    task_id: "pre-call-nudge",
+    component,
+    event: "persona_bias_active",
+    payload: personaBiasInfo,
+  });
+  const topChunks = await poolChunksForProfile(
+    queries,
+    caseId,
+    component,
+    input.language,
+    persona
+  );
 
   // 4. Generate. Sonnet first, Haiku fallback.
   let inner;

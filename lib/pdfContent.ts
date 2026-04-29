@@ -17,6 +17,7 @@
 import { claudeMessage, extractToolUse, MODELS, type ModelTier } from "./anthropic";
 import { log } from "./log";
 import { retrieveGrounding, renderRefusal, type GroundingHit } from "./retrieve";
+import { augmentQueryWithPersona } from "./personaBias";
 import { sanitizeForPrompt, sanitizeProfile } from "./sanitize";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ExtractedQuestion } from "./extract";
@@ -357,7 +358,11 @@ export async function generatePDFContent(input: PdfContentInput): Promise<PDFCon
       chunkMap[i] = { hits: pre, refused: pre.length === 0 };
       continue;
     }
-    const r = await retrieveGrounding(q.question_rewritten, {
+    // Persona-Biased Retrieval (PBR, AAAI 2026): bias chunk surfacing
+    // toward the lead's information needs. Confidence floor 0.65; original
+    // question text remains primary signal. See lib/personaBias.ts.
+    const biasedQuery = augmentQueryWithPersona(q.question_rewritten, input.persona);
+    const r = await retrieveGrounding(biasedQuery, {
       caseId: input.caseId,
       taskId: "3.2-pdf-content",
       component,

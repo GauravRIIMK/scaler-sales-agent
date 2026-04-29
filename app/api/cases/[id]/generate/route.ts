@@ -24,6 +24,7 @@ import { log } from "@/lib/log";
 import { extractQuestions } from "@/lib/extract";
 import { inferPersona, type LeadProfile as PersonaLeadProfile } from "@/lib/persona";
 import { retrieveGrounding, type GroundingHit } from "@/lib/retrieve";
+import { augmentQueryWithPersona, describePersonaBias } from "@/lib/personaBias";
 import { generatePDFContent } from "@/lib/pdfContent";
 import { verifyPDFContent, type ChunkLike } from "@/lib/verify";
 import { transcribeAudioFromUrl, isDeepgramConfigured } from "@/lib/deepgram";
@@ -181,13 +182,28 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
   await setState("persona_inferred", { persona_vector: persona });
 
-  // 4. Retrieve per question.
+  // 4. Retrieve per question — with Persona-Biased Retrieval (PBR).
+  // Append axis-derived terms to each question query so the hybrid retriever
+  // surfaces chunks aligned with the lead's information needs (e.g. EMI
+  // financing for high financial_sensitivity, refund/placement chunks for
+  // risk-averse). Pattern: arXiv:2510.08935 (AAAI 2026 PBR), confidence
+  // floor 0.65 to avoid biasing on unreliable axis labels. The original
+  // question text remains the primary signal — augment is appended.
+  const personaBiasInfo = describePersonaBias(persona);
+  await log({
+    case_id: caseId,
+    task_id: "2.1-generate",
+    component,
+    event: "persona_bias_active",
+    payload: personaBiasInfo,
+  });
   const retrievedByIdx: Record<number, GroundingHit[]> = {};
   const retrievedMeta: Record<number, { refused: boolean; top_score: number | null; pool: number }> = {};
   for (let i = 0; i < extractResult.questions.length; i++) {
     const q = extractResult.questions[i];
+    const biasedQuery = augmentQueryWithPersona(q.question_rewritten, persona);
     try {
-      const r = await retrieveGrounding(q.question_rewritten, {
+      const r = await retrieveGrounding(biasedQuery, {
         caseId,
         taskId: "2.1-generate",
         component,
