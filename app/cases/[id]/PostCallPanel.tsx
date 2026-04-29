@@ -85,13 +85,56 @@ export function PostCallPanel({
     try {
       let res: Response;
       if (tab === "audio" && audio) {
-        const form = new FormData();
-        form.set("audio", audio);
-        if (transcript.trim()) form.set("transcript", transcript.trim());
-        if (phone.trim()) form.set("evaluator_phone", phone.trim());
+        // Two-step direct-to-Supabase upload to bypass Vercel's 4.5 MB
+        // serverless function payload cap. Real sales calls (15-30 min)
+        // are 100+ MB; multipart-into-function is structurally wrong for
+        // production. See app/api/cases/[id]/audio-upload-url/route.ts.
+
+        // 1) Ask the server for a signed upload URL.
+        setBusyLabel("Getting upload URL…");
+        const urlRes = await fetch(`/api/cases/${caseId}/audio-upload-url`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            filename: audio.name,
+            content_type: audio.type || "audio/wav",
+          }),
+        });
+        const urlPayload = await urlRes.json();
+        if (!urlRes.ok) {
+          throw new Error(`upload-url failed: ${urlPayload?.error ?? `HTTP ${urlRes.status}`}`);
+        }
+        const { signed_upload_url, path } = urlPayload as {
+          signed_upload_url: string;
+          path: string;
+        };
+
+        // 2) PUT the file directly to Supabase. Browser → Supabase, no
+        // Vercel function in the middle. Supabase signed-upload URLs
+        // expect PUT with the file body.
+        setBusyLabel(`Uploading ${(audio.size / (1024 * 1024)).toFixed(1)} MB direct to Supabase…`);
+        const putRes = await fetch(signed_upload_url, {
+          method: "PUT",
+          headers: { "content-type": audio.type || "audio/wav" },
+          body: audio,
+        });
+        if (!putRes.ok) {
+          throw new Error(
+            `direct upload failed: HTTP ${putRes.status} ${putRes.statusText}`
+          );
+        }
+
+        // 3) Tell the post-call route the bucket-internal path. The route
+        // signs a fresh read URL (24h) and persists it as audio_blob_url.
+        setBusyLabel("Finalising…");
         res = await fetch(`/api/cases/${caseId}/post-call`, {
           method: "POST",
-          body: form,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            audio_path: path,
+            transcript: transcript.trim() || undefined,
+            evaluator_phone: phone.trim() || undefined,
+          }),
         });
       } else {
         res = await fetch(`/api/cases/${caseId}/post-call`, {

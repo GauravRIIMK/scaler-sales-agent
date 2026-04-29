@@ -51,6 +51,11 @@ const MAX_AUDIO_BYTES = 40 * 1024 * 1024;
 interface PostCallBody {
   transcript?: string;
   audio_url?: string;
+  // audio_path: bucket-internal path returned by /api/cases/[id]/audio-upload-url
+  // after the client has direct-uploaded the file. /post-call signs a fresh
+  // read URL (24h TTL) and persists it as audio_blob_url. This is the
+  // production path — bypasses Vercel's 4.5 MB function payload limit.
+  audio_path?: string;
   evaluator_phone?: string;
 }
 
@@ -67,6 +72,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const ct = req.headers.get("content-type") ?? "";
   let transcript: string | undefined;
   let audioUrl: string | undefined;
+  let audioPath: string | undefined;
   let evaluatorPhone: string | undefined;
   let audioBytes: Uint8Array | undefined;
   let audioContentType: string | undefined;
@@ -78,6 +84,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (typeof t === "string") transcript = t;
       const a = form.get("audio_url");
       if (typeof a === "string") audioUrl = a;
+      const ap = form.get("audio_path");
+      if (typeof ap === "string") audioPath = ap;
       const e = form.get("evaluator_phone");
       if (typeof e === "string") evaluatorPhone = e;
 
@@ -95,14 +103,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (!body) return badRequest("invalid JSON body");
       transcript = body.transcript;
       audioUrl = body.audio_url;
+      audioPath = body.audio_path;
       evaluatorPhone = body.evaluator_phone;
     }
   } catch (e) {
     return badRequest(`parse error: ${String(e).slice(0, 180)}`);
   }
 
-  if (!transcript && !audioUrl && !audioBytes) {
-    return badRequest("one of transcript, audio_url, or audio file is required");
+  if (!transcript && !audioUrl && !audioPath && !audioBytes) {
+    return badRequest("one of transcript, audio_url, audio_path, or audio file is required");
   }
   if (transcript && transcript.length > MAX_TRANSCRIPT_CHARS) {
     return badRequest(`transcript too long (>${MAX_TRANSCRIPT_CHARS} chars)`);
@@ -168,6 +177,38 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (signErr || !signed) {
       return NextResponse.json(
         { error: `audio sign failed: ${signErr?.message ?? "unknown"}`, case_id: caseId },
+        { status: 500 }
+      );
+    }
+    audioUrl = signed.signedUrl;
+  }
+
+  // 2b. If audio_path was provided (direct-upload flow — client already PUT
+  // the file to the signed upload URL from /audio-upload-url), generate a
+  // fresh signed READ URL with 24h TTL and use it as audio_blob_url.
+  // This is the production path that avoids Vercel's serverless payload
+  // ceiling.
+  if (audioPath && !audioUrl) {
+    const { data: signed, error: signErr } = await supabase.storage
+      .from(AUDIO_BUCKET)
+      .createSignedUrl(audioPath, 60 * 60 * 24);
+    if (signErr || !signed) {
+      await log({
+        case_id: caseId,
+        task_id: "cases.post-call",
+        component,
+        level: "ERROR",
+        event: "audio_path_sign_failed",
+        error_message: signErr?.message ?? "no signed url",
+        payload: { bucket: AUDIO_BUCKET, audio_path: audioPath },
+      });
+      return NextResponse.json(
+        {
+          error:
+            `audio_path sign failed: ${signErr?.message ?? "unknown"} ` +
+            `(check that the file was actually uploaded to ${AUDIO_BUCKET}/${audioPath})`,
+          case_id: caseId,
+        },
         { status: 500 }
       );
     }
