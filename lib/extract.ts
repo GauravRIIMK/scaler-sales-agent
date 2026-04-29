@@ -97,7 +97,7 @@ const EVIDENCE_ENUM: EvidenceType[] = [
 
 const EXTRACTOR_VERSION = "extract-2.3-v1";
 
-const PASS1_SYSTEM = `You are a sales-conversation analyst at Scaler. Your job is to read the LEAD side of a conversation and surface every concern — explicit questions AND implicit doubts — that the post-call PDF must address.
+const PASS1_SYSTEM = `You are a sales-conversation analyst at Scaler. Your job is to read the LEAD side of a conversation and surface concerns — explicit questions AND implicit doubts — that the post-call PDF must address.
 
 Rules, hard:
 - Only the LEAD's turns matter. Ignore BDA/advisor turns completely.
@@ -106,7 +106,12 @@ Rules, hard:
 - Every concern MUST cite turn_idx + [start,end] char offsets in that turn's text.
 - Classify concern_type strictly from the enum provided. Use "other" only when nothing fits.
 - Do not paraphrase yet — record the raw excerpt.
-- Output zero concerns rather than fabricate one. An empty list is a valid answer.`;
+- Output zero concerns rather than fabricate one. An empty list is a valid answer.
+
+Consolidation (critical for downstream cost and PDF quality):
+- Output AT MOST 7 distinct concerns. If the LEAD raised more than 7, prioritise the ones the BDA most needs to address in the follow-up PDF (cost > placement > curriculum/format > timeline > comparison > other).
+- Consolidate near-duplicates: if the LEAD raises the same underlying topic twice (e.g. "is 8 hours a week enough?" and "I can't do 15 hours weekly"), merge them into ONE concern with the most representative span — do not list both.
+- Anchor every concern to a verbatim LEAD phrase: if you cannot quote a specific span from a LEAD turn that supports the concern, drop it. Inferring topics from product knowledge ("they probably also want to know about X") or from typical sales objections is forbidden — the lead must have actually said something traceable to it.`;
 
 const PASS2_SYSTEM = `You are a research librarian. Given a list of concerns extracted from a sales call, rewrite each as ONE retrievable question we can answer with scaler.com content.
 

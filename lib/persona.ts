@@ -76,7 +76,11 @@ Axes and meanings:
 - career_stage: early (< ~3y exp / student) | mid (~3-8y) | senior (~8y+ / staff+) | unknown
 - financial_sensitivity: high (asks about EMI, cost burden, household) | medium (asks ROI but can pay) | low (cost not a blocker) | unknown
 - technical_depth: deep (fluent in systems/ML specifics) | moderate (dev but not specialist) | novice (new to the domain) | unknown
-- stakeholder_context: solo | family-joint (parents, spouse, "household decision") | team (company training) | unknown
+- stakeholder_context:
+    solo  = single decision-maker, no other party mentioned
+    family-joint = domestic stakeholders only — parents, spouse, "we need to discuss as a family", "household decision". The word "joint" refers to a household, NOT a co-funding arrangement.
+    team  = corporate context — "my company would sponsor", "employer reimbursement", "work would pay half", company training program, manager sign-off. ANY mention of an employer paying or co-funding maps here, NEVER family-joint.
+    unknown = no signal
 - risk_posture: risk-averse (guarantees, refunds) | balanced (asks about placements AND curriculum) | risk-tolerant (already betting on self) | unknown
 
 Hard rules:

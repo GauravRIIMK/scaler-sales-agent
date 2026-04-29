@@ -132,7 +132,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const supabase = supabaseServer();
   const { data, error } = await supabase
     .from("lead_cases")
-    .select("id, bda_nudge_markdown")
+    .select("id, bda_nudge_markdown, bda_nudge_whatsapp_plaintext")
     .eq("id", caseId)
     .single();
   if (error || !data) {
@@ -141,5 +141,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       { status: 404 }
     );
   }
-  return NextResponse.json({ case_id: caseId, markdown: data.bda_nudge_markdown ?? null });
+  return NextResponse.json({
+    case_id: caseId,
+    markdown: data.bda_nudge_markdown ?? null,
+    whatsapp_plaintext: data.bda_nudge_whatsapp_plaintext ?? null,
+  });
 }
