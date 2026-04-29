@@ -18,7 +18,6 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { log } from "@/lib/log";
 import { isTwilioConfigured, sendWhatsAppText } from "@/lib/twilio";
-import { requireBdaCode } from "@/lib/bdaAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,8 +55,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const component = "nudge_send";
   if (!caseId) return NextResponse.json({ error: "missing case id" }, { status: 400 });
 
-  const authErr = requireBdaCode(req, caseId);
-  if (authErr) return authErr;
+  // R04 (BLUEPRINT.md:30): "No approval gate for BDA-facing nudge (internal)".
+  // The lead-facing send routes (/decision, /pdf, /deliver) keep their gate
+  // per R13/R24/AT-06. The two-stage pre-call sender
+  // (/api/leads/[id]/fire-nudge-now) is also intentionally ungated.
+  // Legacy callers (smoke.mjs, seed-personas.mjs) still pass the
+  // x-bda-approval-code header — that's a no-op now, no breakage.
 
   if (!isTwilioConfigured()) {
     return NextResponse.json(

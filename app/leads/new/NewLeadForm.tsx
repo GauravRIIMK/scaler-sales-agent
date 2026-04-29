@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { getSamplePersona, type SamplePersona } from "@/lib/samplePersonas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -177,7 +179,7 @@ function PhoneField({
 // Main form
 // ---------------------------------------------------------------------------
 
-export function NewLeadForm() {
+function NewLeadFormInner() {
   // Profile
   const [profileFields, setProfileFields] = useState<ProfileFields>(EMPTY_PROFILE);
   const [profileJsonOverride, setProfileJsonOverride] = useState("");
@@ -210,6 +212,42 @@ export function NewLeadForm() {
   const [firing, setFiring] = useState(false);
   const [fireResult, setFireResult] = useState<string | null>(null);
   const [fireError, setFireError] = useState<string | null>(null);
+
+  // Prefill state
+  const searchParams = useSearchParams();
+  const [prefillPersona, setPrefillPersona] = useState<SamplePersona | null>(null);
+
+  // On mount: read ?prefill=<slug> and sessionStorage evaluator_phone
+  useEffect(() => {
+    const slug = searchParams.get("prefill");
+    if (slug) {
+      const persona = getSamplePersona(slug);
+      if (persona) {
+        setPrefillPersona(persona);
+        setParagraphText(persona.profileText);
+      }
+    }
+
+    try {
+      const stored = sessionStorage.getItem("evaluator_phone");
+      if (stored) {
+        setBdaPhone((prev) => (prev.trim() ? prev : stored));
+        setEvaluatorPhone((prev) => (prev.trim() ? prev : stored));
+      }
+    } catch {
+      // private browsing — ignore
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleClearPrefill() {
+    setPrefillPersona(null);
+    setParagraphText("");
+    setProfileFields(EMPTY_PROFILE);
+    setExtractMeta(null);
+    setExtractDone(false);
+    setShowManualFields(false);
+    setExtractError(null);
+  }
 
   function setField(key: keyof ProfileFields) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -367,6 +405,18 @@ export function NewLeadForm() {
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
 
       setResult(json as CreateLeadResult);
+
+      // Persist evaluator phone to sessionStorage for the landing page
+      const phoneToSave = evaluatorPhone.trim() || bdaPhone.trim();
+      if (phoneToSave) {
+        try {
+          if (!sessionStorage.getItem("evaluator_phone")) {
+            sessionStorage.setItem("evaluator_phone", phoneToSave);
+          }
+        } catch {
+          // private browsing — ignore
+        }
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -413,6 +463,24 @@ export function NewLeadForm() {
 
   return (
     <form onSubmit={submit} className="space-y-8">
+      {/* Prefill banner */}
+      {prefillPersona && (
+        <div className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
+          <span>
+            Sample loaded:{" "}
+            <span className="font-medium">{prefillPersona.shortName}</span>. Edit any field
+            before submitting.
+          </span>
+          <button
+            type="button"
+            onClick={handleClearPrefill}
+            className="shrink-0 text-xs text-slate-500 underline hover:text-slate-800"
+          >
+            Clear sample
+          </button>
+        </div>
+      )}
+
       {/* What you'll see explainer */}
       <p className="rounded border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
         Submitting creates the lead row in <span className="font-mono">nudge_scheduled</span>.
@@ -893,5 +961,14 @@ export function NewLeadForm() {
         </div>
       )}
     </form>
+  );
+}
+
+// Wrap with Suspense so useSearchParams() doesn't block SSR
+export function NewLeadForm() {
+  return (
+    <Suspense fallback={null}>
+      <NewLeadFormInner />
+    </Suspense>
   );
 }

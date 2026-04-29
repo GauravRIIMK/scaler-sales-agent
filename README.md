@@ -63,17 +63,19 @@ Next.js 14 (App Router, Node runtime) · Supabase (Postgres + pgvector + pg_trgm
 
 ## One failure
 
-The refuse-test fixtures in `data/refuse_fixtures.json` hold 12 questions that are deliberately NOT answered on scaler.com (e.g. `"Does Scaler have a Singapore campus?"`, `"Can I transfer to MIT after the course?"`, `"Is there a 100% placement guarantee?"`). The verifier is the system's honesty floor — if retrieval returned a weak-but-not-rejected chunk and the LLM made the claim fit, the surface-regex moat would still catch `"100% placement guarantee"` because the banned word `guarantee` doesn't appear verbatim in any cited chunk. The failure mode I would actually expect to observe first is the *opposite*: a fixture like `"What's the refund policy if I drop out?"` where the corpus has enough refund-adjacent language that the refuse gate passes but the claim paraphrases rather than quotes. Moat 2 (Haiku `partial` verdict) is what's supposed to catch that — on repeated runs, we'd want to measure what fraction of flagged sentences are genuinely unsafe vs over-cautious. That number decides whether the refuse threshold `0.35` is too lax.
+Refuse gate passes but the LLM paraphrases rather than quotes — e.g. `"What's the refund policy if I drop out?"` where refund-adjacent corpus language avoids rejection. Moat 2 (Haiku `partial` verdict) catches it. What fraction of flagged sentences are genuinely unsafe? That decides whether threshold `0.35` is too lax.
 
 ## Scale plan
 
-At 20–30 cases/day the binding constraint is **Opus latency**, not cost: the PDF generator makes one Opus call per extracted question (typically 4–7), so a single case spends ~30–60s in wall-clock generation. Three unblocks, in order:
+At 20–30 cases/day the binding constraint is Opus latency: one call per extracted question (4–7 typical), so ~30–60s per case.
 
-1. **Parallelise per-section generation.** The `for`-loop in `lib/pdfContent.ts:generatePDFContent` is trivially `Promise.all`-ifiable — each section is independent once its chunks are retrieved. Expected ~3–5× wall-clock reduction, no architectural change.
-2. **Switch hot-path sections to Sonnet by default.** Opus is worth it for the first section of each PDF (sets the tone). Sonnet handles follow-on sections indistinguishably in our test set. Keep Opus as a fallback when verifier `ok_rate < 0.7`.
-3. **Move the verifier off the critical path.** Moat 2 adds a Haiku batch-call per section. At 20 cases/day that's negligible cost, but it's latency. Queue it via Supabase realtime + re-render if it catches anything — the user sees the first pass faster, and the (rare) recall-back case is an acceptable trade at this volume.
+Three unblocks:
 
-Beyond 200 cases/day, the real bottleneck is **ingest freshness**. The corpus currently reflects one crawl date. A weekly recrawl with content-hash dedup keeps the signal fresh without re-embedding unchanged chunks.
+1. **Parallelise per-section generation.** `lib/pdfContent.ts:generatePDFContent` is a serial `for`-loop; sections are independent once chunks are retrieved. `Promise.all` cuts wall-clock ~3–5×.
+2. **Switch hot-path sections to Sonnet.** Opus earns its keep on section one; Sonnet handles follow-on sections equivalently. Revert if verifier `ok_rate < 0.7`.
+3. **Move verifier off critical path.** Queue Haiku batch-calls via Supabase realtime; re-render on catch. First pass arrives faster.
+
+Beyond 200 cases/day: weekly recrawl with content-hash dedup keeps corpus fresh without re-embedding unchanged chunks.
 
 ---
 
