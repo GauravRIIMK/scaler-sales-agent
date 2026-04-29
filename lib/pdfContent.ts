@@ -362,6 +362,7 @@ export async function generatePDFContent(input: PdfContentInput): Promise<PDFCon
       taskId: "3.2-pdf-content",
       component,
       topK: 6,
+      language: input.language, // R07: Hindi cases need dense-only routing
     });
     chunkMap[i] = { hits: r.hits, refused: r.refused };
   }

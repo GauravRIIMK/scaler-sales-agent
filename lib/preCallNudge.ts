@@ -25,7 +25,7 @@
  *      with empty questions[] and empty transcript — the prompt already
  *      handles "(no questions extracted)" and "(no transcript provided)")
  *   4. call Sonnet with profile + persona + chunks; emit markdown +
- *      ≤1500-char WhatsApp plaintext via the same record_nudge tool
+ *      ≤600-char WhatsApp plaintext via the same record_nudge tool
  *
  * Honesty rules carry over: every inferred angle gets "(inferred)", every
  * factual claim about Scaler is grounded in a retrieved chunk.
@@ -38,7 +38,7 @@ import { retrieveGrounding, formatCitation, type GroundingHit } from "./retrieve
 import { inferPersona, type PersonaVector } from "./persona";
 
 const NUDGE_VERSION = "pre-call-nudge-v1";
-const WHATSAPP_CHAR_LIMIT = 1500;
+const WHATSAPP_CHAR_LIMIT = 600;
 const TOP_CHUNKS_FOR_NUDGE = 4;
 const PER_QUERY_TOPK = 3;
 
@@ -61,19 +61,19 @@ Strict rules:
 - Reference retrieved chunks by their bracketed [url] source when citing a Scaler fact. If no chunks were retrieved, say so in Flags and avoid making program-specific claims.
 - Keep bullets one level deep. Short sentences. Second person ("they …") when referring to the lead.
 
-The WHATSAPP plaintext version must be ≤1500 characters, no markdown syntax, no asterisks, no hyphens as bullets.
+The WHATSAPP plaintext version must be ≤600 characters, no markdown syntax, no asterisks, no hyphens as bullets.
 It must include ALL FIVE of the following sections using these exact labels on their own line:
   Who: <1 line — name, role, company, years exp>
   Hooks: <2 strongest angles, each on its own sub-line starting with a dash>
   Likely objections: <2 predicted objections + a micro-handle for each, one per line as "Obj -> Handle">
   Open with: <the exact opening line the BDA should use verbatim>
   Flag: <high-risk inferred claims or missing data; write "None" if clean>
-Keep each section tight. Total must not exceed 1500 chars.`;
+Keep each section tight. Total must not exceed 600 chars.`;
 
 function nudgeTool(): Anthropic.Tool {
   return {
     name: "record_nudge",
-    description: "Emit the pre-call BDA nudge as markdown (full) + plaintext (≤1500 chars for WhatsApp).",
+    description: "Emit the pre-call BDA nudge as markdown (full) + plaintext (≤600 chars for WhatsApp).",
     input_schema: {
       type: "object",
       properties: {

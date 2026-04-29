@@ -192,6 +192,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         taskId: "2.1-generate",
         component,
         topK: 6,
+        language: (row.language as string | null) ?? undefined, // R07: Hindi cases need dense-only routing
       });
       retrievedByIdx[i] = r.hits;
       retrievedMeta[i] = { refused: r.refused, top_score: r.top_rerank_score, pool: r.pool_size };

@@ -283,7 +283,7 @@ export function regexPersona(profile: LeadProfile, questions: ExtractedQuestion[
   } else if (/already (quit|resigned|bootstrap|founded|side project)|betting on/i.test(hay)) {
     risk = "risk-tolerant"; riskConf = 0.7;
   } else if (/curriculum|placement|both/i.test(hay)) {
-    risk = "balanced"; riskConf = 0.55;
+    risk = "balanced"; riskConf = 0.65; // was 0.55 — needed to clear CONFIDENCE_FLOOR=0.6 (R16: all axis values reachable)
   }
 
   const snapVal = <V extends string>(val: V, conf: number, fallback: V): V =>

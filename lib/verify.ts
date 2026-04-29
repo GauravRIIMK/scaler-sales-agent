@@ -35,7 +35,10 @@ const VERIFY_BATCH_SIZE = 8;
 
 const BANNED_WORDS = ["guarantee", "promise", "best", "top"] as const;
 
-const RUPEE_RE = /₹\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakh|crore|cr|lac|k))?/gi;
+// Match either raw ₹-amounts or already-sanitized "Rs" form (pdfContent.ts
+// runs sanitizeRupee() before handing to verify, so by the time we see the
+// sentence the symbol may have been replaced; match both shapes).
+const RUPEE_RE = /(?:₹|\bRs\.?)\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakh|crore|cr|lac|k))?/gi;
 const LPA_RE = /\b\d+(?:\.\d+)?\s*(?:LPA|CTC|lakhs?\s*per\s*annum)\b/gi;
 const URL_RE = /https?:\/\/[^\s)<>\]"']+/gi;
 const BANNED_RE = new RegExp(`\\b(${BANNED_WORDS.join("|")})\\b`, "gi");
@@ -48,6 +51,7 @@ export interface VerifyStats {
   rewritten_count: number;
   ok_rate: number; // fact sentences surviving / total fact sentences
   moat2_skipped: boolean;
+  moat2_sections_failed: number;
 }
 
 export interface VerifyResult {
@@ -234,6 +238,7 @@ export async function verifyPDFContent(
   let flagged = 0;
   let rewritten = 0;
   let moat2Skipped = Boolean(opts.skipMoat2);
+  let moat2SectionsFailed = 0;
 
   const cleanedSections: PDFSection[] = [];
 
@@ -302,8 +307,8 @@ export async function verifyPDFContent(
 
   // Moat 2: LLM batch verify, section-by-section, for surviving fact sentences with citations.
   if (!moat2Skipped) {
-    for (let sIdx = 0; sIdx < cleanedSections.length; sIdx++) {
-      const section = cleanedSections[sIdx];
+    for (let sectionIdx = 0; sectionIdx < cleanedSections.length; sectionIdx++) {
+      const section = cleanedSections[sectionIdx];
       const batch: BatchItem[] = [];
       section.sentences.forEach((sent, idx) => {
         if (sent.certainty === "refused") return;
@@ -322,11 +327,12 @@ export async function verifyPDFContent(
           task_id: "3.3-verify",
           component,
           level: "WARN",
-          event: "verify_moat2_failed_skipping",
-          error_message: String(e).slice(0, 500),
+          event: "moat2_failed_section",
+          payload: { section_index: sectionIdx, section_name: section.name },
+          error_message: String(e).slice(0, 300),
         });
-        moat2Skipped = true;
-        break;
+        moat2SectionsFailed += 1;
+        continue; // skip THIS section's moat 2, but keep verifying remaining sections
       }
 
       // Map verdicts back onto the section.
@@ -347,10 +353,14 @@ export async function verifyPDFContent(
         return null as unknown as Sentence;
       });
 
-      cleanedSections[sIdx] = {
+      cleanedSections[sectionIdx] = {
         ...section,
         sentences: next.filter((s): s is Sentence => s != null),
       };
+    }
+    // moat2Skipped = true only when EVERY section failed (equivalent to "skipped entirely")
+    if (moat2SectionsFailed > 0 && moat2SectionsFailed === cleanedSections.length) {
+      moat2Skipped = true;
     }
   }
 
@@ -397,6 +407,7 @@ export async function verifyPDFContent(
     rewritten_count: rewritten,
     ok_rate,
     moat2_skipped: moat2Skipped,
+    moat2_sections_failed: moat2SectionsFailed,
   };
 
   await log({
